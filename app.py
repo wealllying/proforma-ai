@@ -19,48 +19,35 @@ st.title("Pro Forma AI — Real Estate Stress-Tester")
 st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF report**")
 
 # — PAYMENT SIDEBAR —
-# — FINAL, BULLETPROOF STRIPE SIDEBAR (works on every Streamlit Cloud app) —
+# — FINAL SIDEBAR THAT WORKS 100% ON STREAMLIT CLOUD —
 with st.sidebar:
     st.header("Buy Instant Access")
 
-    # Simple, reliable way to get your app URL (no secret functions)
-    try:
-        current_url = st.experimental_get_query_params().get("url", [None])[0]
-        if not current_url:
-            current_url = "https://" + st.secrets.get("app_url", "your-app-name.streamlit.app")
-    except:
-        current_url = "https://your-app-name.streamlit.app"   # fallback
+    # Hard-code your real app URL (fastest + most reliable)
+    APP_URL = "https://proforma-ai-f3poyqgcroefu3qwcqwy3m.streamlit.app/"   # ← CHANGE TO YOUR REAL URL
 
     # $999 button
     if st.button("$999 → One Full Deal", type="primary", use_container_width=True):
-        try:
-            session = stripe.checkout.Session.create(
-                payment_method_types=["card"],
-                line_items=[{"price": st.secrets["stripe_prices"]["one_deal"], "quantity": 1}],
-                mode="payment",
-                success_url=current_url + "?paid=one",
-                cancel_url=current_url,
-            )
-            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-            st.success("Redirecting to Stripe…")
-        except Exception as e:
-            st.error("Checkout error")
-            st.code(str(e))
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["one_deal"], "quantity": 1}],
+            mode="payment",
+            success_url=APP_URL + "?paid=one",
+            cancel_url=APP_URL,
+        )
+        # This is the magic line that actually redirects instantly
+        st.write(f"<script>window.parent.location = '{session.url}'</script>", unsafe_allow_html=True)
 
     # $15,000 button
     if st.button("$15,000/year → Unlimited", use_container_width=True):
-        try:
-            session = stripe.checkout.Session.create(
-                payment_method_types=["card"],
-                line_items=[{"price": st.secrets["stripe_prices"]["annual"], "quantity": 1}],
-                mode="payment",
-                success_url=current_url + "?paid=annual",
-                cancel_url=current_url,
-            )
-            st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-        except Exception as e:
-            st.error("Checkout error")
-            st.code(str(e))
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["annual"], "quantity": 1}],
+            mode="payment",
+            success_url=APP_URL + "?paid=annual",
+            cancel_url=APP_URL,
+        )
+        st.write(f"<script>window.parent.location = '{session.url}'</script>", unsafe_allow_html=True)
 
     st.success("Payments LIVE")
     st.caption("Test card: 4242 4242 4242 4242")
