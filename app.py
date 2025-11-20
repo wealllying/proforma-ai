@@ -19,13 +19,14 @@ st.title("Pro Forma AI — Real Estate Stress-Tester")
 st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF report**")
 
 # — PAYMENT SIDEBAR —
-# — FINAL 100% WORKING STRIPE SIDEBAR (works on every Streamlit Cloud) —
+# — FINAL, VERSION-PROOF STRIPE SIDEBAR —
 with st.sidebar:
     st.header("Buy Instant Access")
 
+    # $999 button
     if st.button("$999 → One Full Deal", type="primary", use_container_width=True):
         try:
-            session = stripe.checkout.sessions.create(
+            session = stripe.Session.create(
                 payment_method_types=["card"],
                 line_items=[{
                     "price": st.secrets["stripe_prices"]["one_deal"],
@@ -38,12 +39,13 @@ with st.sidebar:
             st.write(f'<meta http-equiv="refresh" content="0; url={session.url}">', 
                      unsafe_allow_html=True)
         except Exception as e:
-            st.error("Temporary checkout glitch – refreshing…")
+            st.error("Temporary glitch – copy error below for support")
             st.code(str(e))
 
+    # $15,000 button
     if st.button("$15,000/year → Unlimited", use_container_width=True):
         try:
-            session = stripe.checkout.sessions.create(
+            session = stripe.Session.create(
                 payment_method_types=["card"],
                 line_items=[{
                     "price": st.secrets["stripe_prices"]["annual"],
@@ -56,11 +58,11 @@ with st.sidebar:
             st.write(f'<meta http-equiv="refresh" content="0; url={session.url}">', 
                      unsafe_allow_html=True)
         except Exception as e:
-            st.error("Temporary checkout glitch – refreshing…")
+            st.error("Temporary glitch – copy error below for support")
             st.code(str(e))
 
     st.success("Payments LIVE")
-    st.caption("Test card: 4242 4242 4242 4242")
+    st.caption("Test card: 4242 4242 4242 4242 • any date • 123")
 # — INPUTS —
 c1, c2 = st.columns(2)
 with c1:
