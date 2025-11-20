@@ -1,4 +1,4 @@
 streamlit
 numpy
 plotly
-stripe==9.7.0
+stripe==10.11.0
