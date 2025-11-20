@@ -19,14 +19,12 @@ st.title("Pro Forma AI — Real Estate Stress-Tester")
 st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF report**")
 
 # — PAYMENT SIDEBAR —
-# — FINAL SIDEBAR THAT WORKS 100% ON STREAMLIT CLOUD —
 with st.sidebar:
     st.header("Buy Instant Access")
 
-    # Hard-code your real app URL (fastest + most reliable)
-    APP_URL = "https://proforma-ai-f3poyqgcroefu3qwcqwy3m.streamlit.app/"   # ← CHANGE TO YOUR REAL URL
+    # ← CHANGE ONLY THIS LINE TO YOUR REAL APP URL
+    APP_URL = "https://proforma-ai-f3poyqgcroefu3qwcqwy3m.streamlit.app/"   # example: https://proforma-ai-7k9p2q.streamlit.app
 
-    # $999 button
     if st.button("$999 → One Full Deal", type="primary", use_container_width=True):
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -35,10 +33,9 @@ with st.sidebar:
             success_url=APP_URL + "?paid=one",
             cancel_url=APP_URL,
         )
-        # This is the magic line that actually redirects instantly
-        st.write(f"<script>window.parent.location = '{session.url}'</script>", unsafe_allow_html=True)
+        # ← THIS LINE IS THE MAGIC ONE THAT ACTUALLY REDIRECTS
+        st.write(f'<script>window.top.location.href = "{session.url}"</script>', unsafe_allow_html=True)
 
-    # $15,000 button
     if st.button("$15,000/year → Unlimited", use_container_width=True):
         session = stripe.checkout.Session.create(
             payment_method_types=["card"],
@@ -47,7 +44,7 @@ with st.sidebar:
             success_url=APP_URL + "?paid=annual",
             cancel_url=APP_URL,
         )
-        st.write(f"<script>window.parent.location = '{session.url}'</script>", unsafe_allow_html=True)
+        st.write(f'<script>window.top.location.href = "{session.url}"</script>', unsafe_allow_html=True)
 
     st.success("Payments LIVE")
     st.caption("Test card: 4242 4242 4242 4242")
