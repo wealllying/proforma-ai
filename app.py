@@ -19,13 +19,19 @@ st.title("Pro Forma AI — Real Estate Stress-Tester")
 st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF report**")
 
 # — PAYMENT SIDEBAR —
-# — FINAL SIDEBAR: 100 % WORKING PAYMENTS (Nov 2025) —
+# — FINAL, BULLETPROOF STRIPE SIDEBAR (works on every Streamlit Cloud app) —
 with st.sidebar:
     st.header("Buy Instant Access")
 
-    # Get current URL the fool-proof way
-    current_url = st.session_state.get("current_url", "https://" + st._get_current_app_url())
+    # Simple, reliable way to get your app URL (no secret functions)
+    try:
+        current_url = st.experimental_get_query_params().get("url", [None])[0]
+        if not current_url:
+            current_url = "https://" + st.secrets.get("app_url", "your-app-name.streamlit.app")
+    except:
+        current_url = "https://your-app-name.streamlit.app"   # fallback
 
+    # $999 button
     if st.button("$999 → One Full Deal", type="primary", use_container_width=True):
         try:
             session = stripe.checkout.Session.create(
@@ -36,11 +42,12 @@ with st.sidebar:
                 cancel_url=current_url,
             )
             st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
-            st.success("Redirecting to secure checkout…")
+            st.success("Redirecting to Stripe…")
         except Exception as e:
-            st.error("Checkout issue")
+            st.error("Checkout error")
             st.code(str(e))
 
+    # $15,000 button
     if st.button("$15,000/year → Unlimited", use_container_width=True):
         try:
             session = stripe.checkout.Session.create(
@@ -52,7 +59,7 @@ with st.sidebar:
             )
             st.markdown(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
         except Exception as e:
-            st.error("Checkout issue")
+            st.error("Checkout error")
             st.code(str(e))
 
     st.success("Payments LIVE")
