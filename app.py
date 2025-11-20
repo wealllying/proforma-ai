@@ -123,7 +123,7 @@ if st.button("RUN 50,000 SCENARIOS", type="primary", use_container_width=True):
     st.plotly_chart(fig, use_container_width=True)
 
     # — REAL PDF GENERATION —
-       # — PROFESSIONAL LENDER-READY PDF —
+          # — PROFESSIONAL LENDER-READY PDF —
     equity_in = cost * (equity / 100)   # ← THIS WAS MISSING
 
     buffer = io.BytesIO()
