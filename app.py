@@ -28,7 +28,7 @@ except:
 # — HEADER WITH YOUR LOGO —
 col1, col2 = st.columns([1, 4])
 with col1:
-    st.image("https://via.placeholder.com/150x50.png?text=YOUR+LOGO", width=150)  # ← replace with your logo URL
+    st.image("https://github.com/wealllying/proforma-ai/blob/main/logo.png?raw=true", width=150)  # ← replace with your logo URL
 with col2:
     st.title("Pro Forma AI – Real Estate Stress-Tester")
     st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF • White-label ready**")
