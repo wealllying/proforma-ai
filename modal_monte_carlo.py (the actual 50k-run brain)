@@ -1,0 +1,39 @@
+# modal_monte_carlo.py
+import modal
+import numpy as np
+import pandas as pd
+
+image = modal.Image.debian_slim().pip_install("numpy", "pandas")
+app = modal.App("proforma-full", image=image)
+
+@app.function(cpu=4, timeout=300)
+def run_full_monte_carlo(data: dict, runs: int = 50000):
+    np.random.seed(42)
+    df = pd.DataFrame({
+        "cost": np.random.normal(1, data.get("cost_vol", 0.15), runs),
+        "rate": np.random.normal(1, data.get("rate_vol", 0.12), runs),
+        "growth": np.random.normal(data.get("growth_mean", 0.035), 0.015, runs),
+        "exit_cap": np.random.normal(data.get("exit_cap_mean", 0.055), 0.010, runs),
+        "delay_mo": np.random.triangular(0, 3, 18, runs),
+    })
+
+    df["total_cost"] = data["base_cost"] * df["cost"]
+    df["interest"] = data["base_rate"] * df["rate"]
+    df["noi_exit"] = data["base_noi"] * (1 + df["growth"]) ** (data["hold_yrs"] - 1)
+    df["exit_value"] = df["noi_exit"] / df["exit_cap"]
+    df["total_debt_cost"] = df["total_cost"] * data["ltv"] * (1 + df["interest"] * (data["hold_yrs"] + df["delay_mo"]/12))
+    df["profit"] = df["exit_value"] - df["total_debt_cost"] - data["equity_in"]
+    df["irr"] = np.where(df["profit"] > 0,
+                         (df["profit"] / data["equity_in"]) ** (1/data["hold_yrs"]) - 1,
+                         -0.99)
+
+    irr_p = np.percentile(df["irr"], [5, 25, 50, 75, 95])
+    return {
+        "irr_5": round(float(irr_p[0]), 4),
+        "irr_25": round(float(irr_p[1]), 4),
+        "irr_50": round(float(irr_p[2]), 4),
+        "irr_75": round(float(irr_p[3]), 4),
+        "irr_95": round(float(irr_p[4]), 4),
+        "histogram": df["irr"].tolist()[::100],  # every 100th for chart
+        "mean_multiple": round(float(df["profit"].add(data["equity_in"]).div(data["equity_in"]).mean()), 2)
+    }
