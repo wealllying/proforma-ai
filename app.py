@@ -54,7 +54,7 @@ if "paid" not in st.query_params:
                 components.html(f'<script>window.open("{session.url}", "_blank")</script>', height=0)
 
         st.success("Payment unlocks full tool instantly")
-        st.caption("Test card: 4242 4242 4242 4242")
+        #st.caption("Test card: 4242 4242 4242 4242")
     st.stop()
 
 # — PAID USER: FULL TOOL WITH EXCEL UPLOAD & CLEAN PDF —
