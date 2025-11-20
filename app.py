@@ -1,4 +1,3 @@
-# app.py — FINAL 100% WORKING + CRASH-PROOF VERSION
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,7 +5,6 @@ import numpy as np
 from datetime import datetime
 import stripe
 
-# ───── SAFE STRIPE SETUP (never crashes even if secrets missing) ─────
 try:
     stripe.api_key = st.secrets["stripe"]["secret_key"]
     ONE_DEAL_PRICE = st.secrets["stripe_prices"]["one_deal"]
