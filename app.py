@@ -60,31 +60,62 @@ with c2:
     years = st.slider("Hold Period (years)", 3, 10, 5)
 
 if st.button("RUN 50,000 SCENARIOS", type="primary", use_container_width=True):
-            with st.spinner("Running 50,000 Monte Carlo simulations…"):
-            np.random.seed(42)
-            n = 50000
+    with st.spinner("Running 50,000 Monte Carlo simulations…"):
+        np.random.seed(42)
+        n = 50000
 
-            # Random risk factors
-            cost_risk   = np.random.normal(1.0, 0.15, n)      # ±15% cost overrun
-            rate_risk   = np.random.normal(1.0, 0.10, n)      # interest volatility
-            growth_risk = np.random.normal(growth, 0.015, n)
-            cap_risk    = np.random.normal(cap, 0.008, n)
-            delay_mo    = np.random.triangular(0, 3, 18, n)   # 0–18 month delay
+        # Random risk factors
+        cost_risk   = np.random.normal(1.0, 0.15, n)
+        rate_risk   = np.random.normal(1.0, 0.10, n)
+        growth_risk = np.random.normal(growth, 0.015, n)
+        cap_risk    = np.random.normal(cap, 0.008, n)
+        delay_mo    = np.random.triangular(0, 3, 18, n)
 
-            actual_cost = cost * cost_risk
-            loan        = actual_cost * (ltc / 100)
-            interest    = loan * rate * rate_risk * (years + delay_mo / 12)
-            noi_exit    = noi * (1 + growth_risk) ** (years - 1)
-            exit_value  = noi_exit / cap_risk
-            profit      = exit_value - loan - interest
-            equity_in   = cost * (equity / 100)
+        actual_cost = cost * cost_risk
+        loan        = actual_cost * (ltc / 100)
+        interest    = loan * rate * rate_risk * (years + delay_mo / 12)
+        noi_exit    = noi * (1 + growth_risk) ** (years - 1)
+        exit_value  = noi_exit / cap_risk
+        profit      = exit_value - loan - interest
+        equity_in   = cost * (equity / 100)
 
-            # IRR calculation – 100% correct
-            irr = np.where(
-                profit > 0,
-                (profit / equity_in) ** (1 / years) - 1,
-                -0.99
-            )
+        irr = np.where(
+            profit > 0,
+            (profit / equity_in) ** (1 / years) - 1,
+            -0.99
+        )
 
-            # ← THIS IS THE LINE YOU WERE MISSING
-            p = np.percentile(irr, [5, 25, 50, 75, 95])
+        p = np.percentile(irr, [5, 25, 50, 75, 95])
+
+    # ───── Results (outside the spinner) ─────
+    st.success("50,000 scenarios complete!")
+    cols = st.columns(5)
+    for i, label in enumerate(["5th", "25th", "Median", "75th", "95th"]):
+        cols[i].metric(label, f"{p[i]:.1%}")
+
+    fig = px.histogram(irr, nbins=70, title="IRR Distribution (50,000 runs)",
+                       color_discrete_sequence=["#1976D2"])
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ───── Lender-ready report ─────
+    report = f"""
+    <html><body style="font-family:Arial;padding:40px;line-height:1.6">
+    <h1 style="color:#1976D2">Pro Forma AI – Stress-Test Report</h1>
+    <p><strong>{datetime.now():%B %d, %Y}</strong> • 50,000 scenarios • ${cost:,} deal</p>
+    <table width="100%" cellpadding="12" style="border-collapse:collapse;font-size:18px">
+    <tr style="background:#1976D2;color:white"><th>Percentile</th><th>IRR</th></tr>
+    <tr><td>5th (severe)</td><td><strong>{p[0]:.1%}</strong></td></tr>
+    <tr><td>25th</td><td>{p[1]:.1%}</td></tr>
+    <tr style="background:#BBDEFB"><td>50th (median)</td><td><strong>{p[2]:.1%}</strong></td></tr>
+    <tr><td>75th</td><td>{p[3]:.1%}</td></tr>
+    <tr style="background:#E8F5E9"><td>95th (upside)</td><td><strong>{p[4]:.1%}</strong></td></tr>
+    </table>
+    <br><small>Generated instantly by Pro Forma AI</small>
+    </body></html>
+    """
+    st.download_button(
+        "Download Lender-Ready Report → Print → Save as PDF",
+        report,
+        f"ProForma_AI_Report_{cost//1000000}M.html",
+        "text/html"
+    )
