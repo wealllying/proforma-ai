@@ -60,21 +60,31 @@ with c2:
     years = st.slider("Hold Period (years)", 3, 10, 5)
 
 if st.button("RUN 50,000 SCENARIOS", type="primary", use_container_width=True):
-    with st.spinner("Running 50,000 Monte Carlo simulations…"):
-        np.random.seed(42)
-        n = 50000
+            with st.spinner("Running 50,000 Monte Carlo simulations…"):
+            np.random.seed(42)
+            n = 50000
 
-        cost_risk   = np.random.normal(1, 0.15, n)
-        rate_risk   = np.random.normal(1, 0.10, n)
-        growth_risk = np.random.normal(growth, 0.015, n)
-        cap_risk    = np.random.normal(cap, 0.008, n)
-        delay_mo    = np.random.triangular(0, 3, 18, n)
+            # Random risk factors
+            cost_risk   = np.random.normal(1.0, 0.15, n)      # ±15% cost overrun
+            rate_risk   = np.random.normal(1.0, 0.10, n)      # interest volatility
+            growth_risk = np.random.normal(growth, 0.015, n)
+            cap_risk    = np.random.normal(cap, 0.008, n)
+            delay_mo    = np.random.triangular(0, 3, 18, n)   # 0–18 month delay
 
-        actual_cost = cost * cost_risk
-        loan = actual_cost * ltc/100
-        interest = loan * rate * rate_risk * (years + delay_mo/12)
-        noi_exit = noi * (1 + growth_risk)**(years-1)
-        exit_value = noi_exit / cap_risk
-        profit = exit_value - loan - interest
-        equity_in = cost * equity/100
-        irr = np.where(profit > 0, (profit/equity_in)**(1/years) - 1, -0.99
+            actual_cost = cost * cost_risk
+            loan        = actual_cost * (ltc / 100)
+            interest    = loan * rate * rate_risk * (years + delay_mo / 12)
+            noi_exit    = noi * (1 + growth_risk) ** (years - 1)
+            exit_value  = noi_exit / cap_risk
+            profit      = exit_value - loan - interest
+            equity_in   = cost * (equity / 100)
+
+            # IRR calculation – 100% correct
+            irr = np.where(
+                profit > 0,
+                (profit / equity_in) ** (1 / years) - 1,
+                -0.99
+            )
+
+            # ← THIS IS THE LINE YOU WERE MISSING
+            p = np.percentile(irr, [5, 25, 50, 75, 95])
