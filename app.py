@@ -10,14 +10,37 @@ st.title("Real Estate Pro Forma Stress-Tester")
 st.markdown("**50,000 Monte Carlo scenarios in < 12 seconds • No login • Lender-ready report**")
 
 # — Sidebar pricing —
-with st.sidebar:
-    st.header("Pricing")
-    st.success("Free test runs below")
-    st.markdown("**$999** → one full deal (with branded PDF)")  
-    st.markdown("**$15k–$25k/year** → unlimited (DM me)")
-    st.markdown("---")
-    st.caption("Built Nov 2025 • 100% working today")
+# — NEW SIDEBAR WITH REAL $999 + $15k STRIPE CHECKOUT —
+import stripe
+stripe.api_key = st.secrets["stripe"]["secret_key"]
 
+with st.sidebar:
+    st.header("Unlock Full Pro Version")
+
+    # $999 one-deal checkout
+    if st.button("Pay $999 → One Full Deal (Instant Access)", type="primary", use_container_width=True):
+        session = stripe.checkout.sessions.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["one_deal"], "quantity": 1}],
+            mode="payment",
+            success_url="https://your-app-name.streamlit.app/?paid=true",   # ← change to your real URL
+            cancel_url="https://your-app-name.streamlit.app/?cancel=true",
+        )
+        st.write(f'<script>window.top.location.href="{session.url}"</script>', unsafe_allow_html=True)
+
+    # $15,000 annual unlimited
+    st.markdown("### Enterprise Unlimited")
+    if st.button("$15,000 / year → Unlimited Deals + White-Label", use_container_width=True):
+        session = stripe.checkout.sessions.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["annual"], "quantity": 1}],
+            mode="payment",
+            success_url="https://your-app-name.streamlit.app/?paid=annual",
+            cancel_url="https://your-app-name.streamlit.app/",
+        )
+        st.write(f'<script>window.top.location.href="{session.url}"</script>', unsafe_allow_html=True)
+
+    st.caption("Test card: 4242 4242 4242 4242 • any future date • 123")
 # — Input tabs —
 tab1, tab2 = st.tabs(["Manual Entry (Instant)", "Excel Upload → Coming Tomorrow"])
 
