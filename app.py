@@ -20,15 +20,32 @@ st.markdown("**50,000 Monte Carlo scenarios • Lender-ready PDF report**")
 
 # — PAYMENT SIDEBAR —
 # — FINAL BULLETPROOF SIDEBAR (copy-paste this entire block) —
+# — FINAL WORKING STRIPE SIDEBAR —
 with st.sidebar:
-    st.header("DEBUG: Secrets Check")
-    
-    # This prints exactly what Streamlit sees
-    st.json(dict(st.secrets), expanded=True)
-    
-    st.divider()
-    st.caption("If you see your sk_test_… key and two price_… IDs above → secrets are perfect")
-    st.caption("If the box is empty or shows error → secrets didn't load")
+    st.header("Buy Instant Access")
+
+    if st.button("$999 → One Full Deal", type="primary", use_container_width=True):
+        session = stripe.checkout.sessions.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["one_deal"], "quantity": 1}],
+            mode="payment",
+            success_url=st.get_option("server.baseUrl") + "/?paid=one",
+            cancel_url=st.get_option("server.baseUrl"),
+        )
+        st.write(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+
+    if st.button("$15,000/year → Unlimited", use_container_width=True):
+        session = stripe.checkout.sessions.create(
+            payment_method_types=["card"],
+            line_items=[{"price": st.secrets["stripe_prices"]["annual"], "quantity": 1}],
+            mode="payment",
+            success_url=st.get_option("server.baseUrl") + "/?paid=annual",
+            cancel_url=st.get_option("server.baseUrl"),
+        )
+        st.write(f'<meta http-equiv="refresh" content="0; url={session.url}">', unsafe_allow_html=True)
+
+    st.success("Payments are LIVE")
+    st.caption("Test card: 4242 4242 4242 4242")
 # — INPUTS —
 c1, c2 = st.columns(2)
 with c1:
