@@ -1,10 +1,4 @@
 streamlit
-modal
 pandas
 numpy
-openai
 plotly
-weasyprint
-stripe
-python-dotenv
-unstructured[all-docs]
