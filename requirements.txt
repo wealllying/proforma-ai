@@ -1,4 +1,7 @@
 streamlit
 numpy
 plotly
-stripe==10.11.0
+stripe
+pandas
+openpyxl
+reportlab
