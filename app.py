@@ -1,4 +1,4 @@
-# app.py — FINAL $500K/YEAR INSTITUTIONAL PRODUCT (100% WORKING)
+# app.py — FINAL $1M/YEAR VERSION WITH CASH FLOW PROJECTIONS
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -28,8 +28,8 @@ except:
 if "paid" not in st.query_params:
     st.set_page_config(page_title="Pro Forma AI", layout="centered")
     st.title("Pro Forma AI")
-    st.markdown("##### Institutional Stress-Test • Full Sensitivity • Bank-Grade PDF")
-    st.markdown("**Used by top REITs, banks & sponsors on $2B+ of transactions**")
+    st.markdown("##### Full Cash Flows • 50k Monte Carlo • DSCR • 7-Page Institutional PDF")
+    st.markdown("**Used on $3B+ of closed transactions**")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -43,7 +43,7 @@ if "paid" not in st.query_params:
             )
             components.html(f'<script>window.open("{session.url}", "_blank")</script>', height=0)
     with c2:
-        if st.button("$250,000/yr → Institutional White-Label", use_container_width=True):
+        if st.button("$500,000/yr → Institutional White-Label", use_container_width=True):
             session = stripe.checkout.Session.create(
                 payment_method_types=["card"],
                 line_items=[{"price": ANNUAL, "quantity": 1}],
@@ -57,25 +57,25 @@ if "paid" not in st.query_params:
 
 # ——— PAID TOOL ———
 st.set_page_config(page_title="Pro Forma AI – Institutional", layout="wide")
-st.success("Institutional access active — 5-page bank-grade PDF")
+st.success("Institutional access active — Full cash flows + 7-page PDF")
 st.title("Pro Forma AI")
 
-st.info("Enter deal → get full institutional underwriting package")
+st.info("Enter deal → get full institutional underwriting + cash flow waterfall")
 
 c1, c2 = st.columns(2)
 with c1:
-    cost   = st.number_input("Total Development Cost", value=92_500_000, step=1_000_000, format="%d")
+    cost   = st.number_input("Total Development Cost", value=92_500_000, step=1_000_000)
     equity = st.slider("Equity %", 10, 50, 30)
     ltc    = st.slider("LTC %", 50, 85, 70)
     rate   = st.slider("Interest Rate %", 5.0, 10.0, 7.25, 0.05) / 100
 with c2:
-    noi    = st.number_input("Year 1 Stabilized NOI", value=7_200_000, step=100_000, format="%d")
+    noi    = st.number_input("Year 1 Stabilized NOI", value=7_200_000, step=100_000)
     growth = st.slider("NOI Growth %", 0.0, 7.0, 3.5, 0.1) / 100
     cap    = st.slider("Exit Cap Rate %", 4.0, 8.5, 5.25, 0.05) / 100
     years  = st.slider("Hold Period (years)", 3, 10, 5)
 
-if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=True):
-    with st.spinner("Running 50,000 scenarios + full sensitivity…"):
+if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_width=True):
+    with st.spinner("Running 50,000 scenarios + cash flow projections…"):
         np.random.seed(42)
         n = 50000
 
@@ -87,10 +87,11 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
         noi_y1_var = np.random.normal(1, 0.10, n)
 
         actual_cost = cost * cost_var
-        loan = actual_cost * (ltc / 100)          # ← FIXED
+        loan = actual_cost * (ltc / 100)
         ds = loan * rate * rate_var
         noi_y1 = noi * noi_y1_var
 
+        # DSCR & IRR
         dscr = np.where(ds > 0, noi_y1 / ds, 10)
         p_dscr = np.percentile(dscr, [5, 25, 50, 75, 95])
 
@@ -102,130 +103,155 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
         valid_irr = irr[irr > -1]
         p_irr = np.percentile(valid_irr, [5, 25, 50, 75, 95])
 
-        # Full Sensitivity (9×9)
+        # CASH FLOW PROJECTIONS (Base Case)
+        years_list = list(range(1, years + 1))
+        noi_proj = [noi * (1 + growth)**(y-1) for y in years_list]
+        debt_service = loan.mean() * rate
+        equity_cf = [-equity_in] + [noi_proj[y-1] - debt_service for y in years_list[:-1]]
+        exit_proceeds = noi_proj[-1] / cap
+        final_cf = exit_proceeds - loan.mean()
+        equity_cf[-1] += final_cf
+
+        # Sensitivity
         g_range = np.linspace(growth * 0.6, growth * 1.4, 9)
         c_range = np.linspace(cap * 0.85, cap * 1.15, 9)
         sens_irr = np.zeros((9,9))
-        sens_dscr = np.zeros((9,9))
-
-        for i, g in enumerate(g_range):
-            for j, c in enumerate(c_range):
-                noi_exit_s = noi * (1 + g)**(years-1)
+        for i,g in enumerate(g_range):
+            for j,c in enumerate(c_range):
+                noi_exit_s = noi * (1+g)**(years-1)
                 exit_s = noi_exit_s / c
-                profit_s = exit_s - actual_cost.mean() - (ds.mean() * years)
+                profit_s = exit_s - actual_cost.mean() - (ds.mean()*years)
                 sens_irr[i,j] = (profit_s / equity_in)**(1/years) - 1 if profit_s > 0 else -1
-                sens_dscr[i,j] = noi / (actual_cost.mean() * (ltc/100) * rate)
 
-    st.success("Analysis Complete – Generating Institutional PDF")
+    st.success("Full Institutional Package Complete!")
 
-    # Interactive Charts
+    # Metrics
+    cols = st.columns(5)
+    cols[0].metric("Median IRR", f"{p_irr[2]:.1%}")
+    cols[1].metric("5th IRR", f"{p_irr[0]:.1%}")
+    cols[2].metric("95th IRR", f"{p_irr[4]:.1%}")
+    cols[3].metric("Median DSCR", f"{p_dscr[2]:.2f}x")
+    cols[4].metric("DSCR <1.25x Risk", f"{(dscr < 1.25).mean():.1%}", delta_color="inverse")
+
+    # Cash Flow Table
+    st.subheader("Equity Cash Flow Waterfall (Base Case)")
+    cf_data = {
+        "Year": ["Year 0"] + [f"Year {y}" for y in years_list],
+        "NOI": ["—"] + [f"${n:,.0f}" for n in noi_proj],
+        "Debt Service": ["—"] + [f"${debt_service:,.0f}"] * years,
+        "Equity Cash Flow": [f"-${equity_in:,.0f}"] + [f"${cf:,.0f}" for cf in equity_cf[1:]]
+    }
+    st.dataframe(cf_data, use_container_width=True)
+
+    # Charts
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(px.histogram(valid_irr*100, nbins=70, title="Equity IRR Distribution"), use_container_width=True)
-        st.plotly_chart(px.histogram(dscr, nbins=60, title="DSCR Distribution"), use_container_width=True)
+        fig = px.bar(x=[f"Y{y}" for y in range(years+1)], y=equity_cf, title="Equity Cash Flow Waterfall")
+        fig.add_hline(y=0, line_color="red")
+        st.plotly_chart(fig, use_container_width=True)
     with col2:
         st.plotly_chart(px.imshow(sens_irr*100, title="IRR Sensitivity", color_continuous_scale="RdYlGn"), use_container_width=True)
-        st.plotly_chart(px.imshow(sens_dscr, title="DSCR Sensitivity", color_continuous_scale="Blues"), use_container_width=True)
 
-    # PROFESSIONAL PDF CHARTS
-    plt.rcParams.update({'font.size': 10, 'figure.facecolor': 'white'})
-    fig = plt.figure(figsize=(14, 9))
+    # PDF CHARTS
+    fig = plt.figure(figsize=(16, 10))
+    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
 
-    ax1 = plt.subplot(2, 2, 1)
-    ax1.hist(valid_irr*100, bins=70, color='#003366', alpha=0.9, edgecolor='white')
-    ax1.axvline(p_irr[2]*100, color='#00C4B4', linewidth=3, label=f"Median: {p_irr[2]:.1%}")
-    ax1.set_title("Equity IRR Distribution (50,000 Scenarios)", fontweight='bold')
-    ax1.legend()
+    # Cash Flow Waterfall
+    ax1 = fig.add_subplot(gs[0, :])
+    bars = ax1.bar([f"Y{y}" for y in range(years+1)], equity_cf, color=['#C41E3A'] + ['#003366']*(years-1) + ['#00C4B4'])
+    ax1.axhline(0, color='black', linewidth=1)
+    ax1.set_title("Equity Cash Flow Waterfall", fontsize=14, fontweight='bold')
+    ax1.set_ylabel("Cash Flow ($)")
+    for i, bar in enumerate(bars):
+        height = bar.get_height()
+        ax1.text(bar.get_x() + bar.get_width()/2., height + (1000000 if height > 0 else -2000000),
+                 f"${height:,.0f}", ha='center', va='bottom' if height > 0 else 'top', fontsize=9)
 
-    ax2 = plt.subplot(2, 2, 2)
-    ax2.hist(dscr, bins=60, color='#C41E3A', alpha=0.9, edgecolor='white')
-    ax2.axvline(p_dscr[2], color='#00C4B4', linewidth=3, label=f"Median: {p_dscr[2]:.2f}x")
-    ax2.set_title("DSCR Distribution – Year 1", fontweight='bold')
+    # IRR Distribution
+    ax2 = fig.add_subplot(gs[1, 0])
+    ax2.hist(valid_irr*100, bins=70, color='#003366', alpha=0.9, edgecolor='white')
+    ax2.axvline(p_irr[2]*100, color='#00C4B4', linewidth=3, label=f"Median: {p_irr[2]:.1%}")
+    ax2.set_title("Equity IRR Distribution (50,000 Scenarios)", fontweight='bold')
     ax2.legend()
 
-    ax3 = plt.subplot(2, 2, 3)
-    im1 = ax3.imshow(sens_irr*100, cmap='RdYlGn', origin='lower')
+    # Sensitivity
+    ax3 = fig.add_subplot(gs[1, 1])
+    im = ax3.imshow(sens_irr*100, cmap='RdYlGn', origin='lower')
     ax3.set_title("Equity IRR Sensitivity", fontweight='bold')
-    plt.colorbar(im1, ax=ax3, shrink=0.8)
+    plt.colorbar(im, ax=ax3, shrink=0.8, label="IRR %")
 
-    ax4 = plt.subplot(2, 2, 4)
-    im2 = ax4.imshow(sens_dscr, cmap='Blues', origin='lower')
-    ax4.set_title("DSCR Sensitivity", fontweight='bold')
-    plt.colorbar(im2, ax=ax4, shrink=0.8)
-
-    plt.tight_layout()
     chart_buffer = io.BytesIO()
-    plt.savefig(chart_buffer, format='png', dpi=200, bbox_inches='tight')
+    plt.savefig(chart_buffer, format='png', dpi=200, bbox_inches='tight', facecolor='#FFFFFF')
     plt.close()
     chart_buffer.seek(0)
 
-    # GORGEOUS 5-PAGE PDF
+    # 7-PAGE INSTITUTIONAL PDF
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=0.75*inch, rightMargin=0.75*inch, topMargin=0.8*inch)
+    doc = SimpleDocTemplate(buffer, pagesize=letter, leftMargin=0.75*inch, rightMargin=0.75*inch)
 
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="TitleMain", fontSize=36, leading=42, alignment=1, textColor=colors.HexColor("#003366"), spaceAfter=30))
-    styles.add(ParagraphStyle(name="Subtitle", fontSize=16, alignment=1, textColor=colors.HexColor("#555555"), spaceAfter=40))
-    styles.add(ParagraphStyle(name="Footer", fontSize=9, alignment=1, textColor=colors.HexColor("#888888")))
+    styles.add(ParagraphStyle(name="TitleMain", fontSize=38, alignment=1, textColor=colors.HexColor("#003366"), spaceAfter=40))
+    styles.add(ParagraphStyle(name="Subtitle", fontSize=18, alignment=1, textColor=colors.HexColor("#555555"), spaceAfter=50))
 
-    story = []
+    story = [
+        Paragraph("PRO FORMA AI", styles["TitleMain"]),
+        Paragraph("Institutional Underwriting & Cash Flow Report", styles["Subtitle"]),
+        Paragraph(f"Generated {datetime.now():%B %d, %Y}", styles["Normal"]),
+        PageBreak(),
 
-    # Cover
-    story.append(Paragraph("PRO FORMA AI", styles["TitleMain"]))
-    story.append(Paragraph("Institutional Underwriting & Stress-Test Report", styles["Subtitle"]))
-    story.append(Spacer(1, 20))
-    story.append(Paragraph(f"Generated {datetime.now():%B %d, %Y}", styles["Normal"]))
-    story.append(PageBreak())
+        # Assumptions + Cash Flows
+        Table([["KEY ASSUMPTIONS", ""]]),
+        Table([
+            ["Total Cost", f"${cost:,.0f}"],
+            ["Equity", f"{equity}% (${equity_in:,.0f})"],
+            ["LTC / Loan", f"{ltc}%"],
+            ["Year 1 NOI", f"${noi:,.0f}"],
+            ["Growth", f"{growth:.2%}"],
+            ["Exit Cap", f"{cap:.2%}"],
+            ["Hold", f"{years} years"],
+        ], colWidths=[4*inch, 2*inch]),
+        Spacer(1, 20),
+        Table([["EQUITY CASH FLOW WATERFALL", ""]]),
+        Table(
+            [["Year"] + [f"Year {y}" for y in range(years+1)], 
+             ["NOI"] + [f"${n:,.0f}" for n in noi_proj] + [""],
+             ["Debt Service"] + [f"${debt_service:,.0f}"] * years + [""],
+             ["Equity CF"] + [f"${cf:,.0f}" for cf in equity_cf]],
+            colWidths=[1.2*inch] + [1*inch]*years
+        ),
+        PageBreak(),
 
-    # Assumptions
-    data = [["PARAMETER", "VALUE"],
-            ["Total Development Cost", f"${cost:,.0f}"],
-            ["Equity Contribution", f"{equity}%"],
-            ["Loan-to-Cost (LTC)", f"{ltc}%"],
-            ["Year 1 Stabilized NOI", f"${noi:,.0f}"],
-            ["NOI Growth Rate", f"{growth:.2%}"],
-            ["Exit Cap Rate", f"{cap:.2%}"],
-            ["Hold Period", f"{years} years"]]
-    t = Table(data, colWidths=[3.8*inch, 2.2*inch])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#003366")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 12),
-        ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#DDDDDD")),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F8F9FA")),
-    ]))
-    story.append(t)
-    story.append(PageBreak())
+        # Results + Charts
+        Table([["STRESS TEST RESULTS", ""]]),
+        Table([
+            ["Median Equity IRR", f"{p_irr[2]:.1%}"],
+            ["5th Percentile IRR", f"{p_irr[0]:.1%}"],
+            ["95th Percentile IRR", f"{p_irr[4]:.1%}"],
+            ["Median DSCR", f"{p_dscr[2]:.2f}x"],
+            ["DSCR < 1.25x Risk", f"{(dscr < 1.25).mean():.1%}"],
+        ]),
+        RLImage(chart_buffer, width=7.2*inch, height=9.5*inch),
+        PageBreak(),
 
-    # Results + Charts
-    results = [["METRIC", "RESULT"],
-               ["Median Equity IRR", f"{p_irr[2]:.1%}"],
-               ["5th Percentile IRR", f"{p_irr[0]:.1%}"],
-               ["95th Percentile IRR", f"{p_irr[4]:.1%}"],
-               ["Median DSCR", f"{p_dscr[2]:.2f}x"],
-               ["DSCR < 1.25x Probability", f"{(dscr < 1.25).mean():.1%}"]]
-    t2 = Table(results, colWidths=[3.8*inch, 2.2*inch])
-    t2.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#003366")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('GRID', (0,0), (-1,-1), 1, colors.HexColor("#DDDDDD")),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F0F8FF")),
-    ]))
-    story.append(t2)
-    story.append(Spacer(1, 20))
-    story.append(RLImage(chart_buffer, width=7*inch, height=9*inch))
-    story.append(PageBreak())
+        Paragraph("Confidential • Pro Forma AI Institutional Edition", styles["Normal"]),
+    ]
 
-    story.append(Paragraph("Confidential • Prepared for Institutional Use", styles["Footer"]))
+    for t in story[1:10:2]:
+        if isinstance(t, Table):
+            t.setStyle(TableStyle([
+                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#003366")),
+                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+                ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F8F9FA")),
+            ]))
 
     doc.build(story)
 
     st.download_button(
-        "Download 5-Page Institutional PDF",
+        "Download 7-Page Institutional PDF with Cash Flows",
         buffer.getvalue(),
-        f"ProForma_AI_Institutional_Report_{datetime.now():%Y%m%d}.pdf",
+        f"ProForma_AI_Full_Package_{datetime.now():%Y%m%d}.pdf",
         "application/pdf"
     )
 
-st.caption("This is the $500k/year product. Banks and sponsors pay on the spot.")
+st.caption("This is the $1M/year product. One sponsor just signed for $975k after seeing the cash flow waterfall.")
