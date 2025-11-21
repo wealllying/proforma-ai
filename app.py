@@ -85,7 +85,7 @@ if uploaded_file and OPENAI_OK:
                          "{\n  \"total_cost\": 92500000,\n  \"equity_percent\": 30,\n  \"ltc_percent\": 70,\n"
                          "  \"stabilized_noi\": 7200000,\n  \"noi_growth_percent\": 3.5,\n"
                          "  \"exit_cap_rate_percent\": 5.25,\n  \"hold_years\": 5\n}"},
-                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}
+                        {"type": "image_url", "image_url": {"url": f"data:{uploaded_file.type};base64,{b64}"}}
                     ]
                 }],
                 response_format={"type": "json_object"},
