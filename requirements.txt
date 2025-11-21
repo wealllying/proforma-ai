@@ -2,8 +2,4 @@ streamlit
 numpy
 plotly
 stripe
-pandas
-openpyxl
 reportlab
-openai
-pillow
