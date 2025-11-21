@@ -104,20 +104,22 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         valid_irr = irr[irr > -1]
         p_irr = np.percentile(valid_irr, [5, 25, 50, 75, 95])
 
-        # CASH FLOW PROJECTIONS (Base Case)
-        year_labels = [f"Year {y}" for y in range(years + 1)]
-        noi_proj = [noi * (1 + growth)**(y) for y in range(years)]
-        debt_service = loan.mean() * rate
-
-        # Equity Cash Flows
+        # CASH FLOW PROJECTIONS — FIXED LENGTHS
         equity_cf = [-equity_in]  # Year 0
-        for y in range(years - 1):
-            equity_cf.append(noi_proj[y] - debt_service)
-        # Final year: operating CF + reversion
-        final_noi = noi * (1 + growth)**(years - 1)
-        exit_value = final_noi / cap
-        final_cf = (final_noi - debt_service) + (exit_value - loan.mean())
-        equity_cf.append(final_cf)
+        noi_proj = []
+        for y in range(1, years + 1):
+            current_noi = noi * (1 + growth) ** (y - 1)
+            noi_proj.append(current_noi)
+            if y < years:
+                equity_cf.append(current_noi - loan.mean() * rate)
+            else:
+                # Final year: operating cash flow + sale proceeds
+                exit_value = current_noi / cap
+                reversion = exit_value - loan.mean()
+                final_cf = (current_noi - loan.mean() * rate) + reversion
+                equity_cf.append(final_cf)
+
+        years_labels = ["Year 0"] + [f"Year {y}" for y in range(1, years + 1)]
 
     st.success("Full Institutional Package Complete!")
 
@@ -129,12 +131,12 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
     cols[3].metric("Median DSCR", f"{p_dscr[2]:.2f}x")
     cols[4].metric("DSCR <1.25x Risk", f"{(dscr < 1.25).mean():.1%}", delta_color="inverse")
 
-    # Cash Flow Table
+    # Cash Flow Table — FIXED
     st.subheader("Equity Cash Flow Waterfall (Base Case)")
     cf_df = pd.DataFrame({
-        "Year": ["Year 0"] + year_labels[1:],
-        "NOI": ["—"] + [f"${v:,.0f}" for v in noi_proj] + [f"${noi_proj[-1]:,.0f}"],
-        "Debt Service": ["—"] + [f"${debt_service:,.0f}"] * years,
+        "Year": years_labels,
+        "NOI": ["—"] + [f"${n:,.0f}" for n in noi_proj],
+        "Debt Service": ["—"] + [f"${loan.mean() * rate:,.0f}"] * years,
         "Equity CF": [f"-${equity_in:,.0f}"] + [f"${cf:,.0f}" for cf in equity_cf[1:]]
     })
     st.dataframe(cf_df, use_container_width=True)
@@ -142,15 +144,12 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
     # Interactive Charts
     col1, col2 = st.columns(2)
     with col1:
-        # Fixed: Use DataFrame for Plotly
-        plot_df = pd.DataFrame({"Year": ["Year 0"] + year_labels[1:], "Cash Flow": equity_cf})
+        plot_df = pd.DataFrame({"Year": years_labels, "Cash Flow": equity_cf})
         fig = px.bar(plot_df, x="Year", y="Cash Flow", title="Equity Cash Flow Waterfall")
         fig.add_hline(y=0, line_color="red", line_width=2)
-        fig.update_layout(showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        # Sensitivity
         g_range = np.linspace(growth * 0.6, growth * 1.4, 9)
         c_range = np.linspace(cap * 0.85, cap * 1.15, 9)
         sens_irr = np.zeros((9,9))
@@ -161,27 +160,27 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
                 profit_s = exit_s - actual_cost.mean() - (ds.mean()*years)
                 sens_irr[i,j] = (profit_s / equity_in)**(1/years) - 1 if profit_s > 0 else -0.5
         fig_sens = px.imshow(sens_irr*100, title="IRR Sensitivity", color_continuous_scale="RdYlGn",
-                             labels=dict(color="IRR %"), x=[f"{c:.2%}" for c in c_range], y=[f"{g:.1%}" for g in g_range])
+                             labels=dict(color="IRR %"))
         st.plotly_chart(fig_sens, use_container_width=True)
 
-    # PDF CHARTS
+    # PDF Charts
     fig = plt.figure(figsize=(16, 10))
     gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3)
 
     ax1 = fig.add_subplot(gs[0, :])
     colors = ['#C41E3A'] + ['#003366']*(years-1) + ['#00C4B4']
-    bars = ax1.bar(plot_df["Year"], plot_df["Cash Flow"], color=colors)
+    bars = ax1.bar(years_labels, equity_cf, color=colors)
     ax1.axhline(0, color='black', linewidth=1.5)
     ax1.set_title("Equity Cash Flow Waterfall", fontsize=16, fontweight='bold')
     for bar in bars:
         h = bar.get_height()
-        ax1.text(bar.get_x() + bar.get_width()/2, h + (h > 0 and 1e6 or -2e6),
+        ax1.text(bar.get_x() + bar.get_width()/2, h + (h > 0 and 2e6 or -3e6),
                  f"${h:,.0f}", ha='center', va='bottom' if h > 0 else 'top', fontsize=10)
 
     ax2 = fig.add_subplot(gs[1, 0])
     ax2.hist(valid_irr*100, bins=70, color='#003366', alpha=0.9, edgecolor='white')
     ax2.axvline(p_irr[2]*100, color='#00C4B4', linewidth=3)
-    ax2.set_title("IRR Distribution (50,000 Scenarios)", fontweight='bold')
+    ax2.set_title("IRR Distribution", fontweight='bold')
 
     ax3 = fig.add_subplot(gs[1, 1])
     im = ax3.imshow(sens_irr*100, cmap='RdYlGn', origin='lower')
@@ -219,11 +218,11 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
 
         Table([["CASH FLOW WATERFALL", ""]]),
         Table(
-            [["Year"] + plot_df["Year"].tolist()] +
-            [["NOI"] + ["—"] + [f"${v:,.0f}" for v in noi_proj] + [f"${noi_proj[-1]:,.0f}"]] +
-            [["Debt Service"] + ["—"] + [f"${debt_service:,.0f}"] * years] +
-            [["Equity CF"] + [f"${v:,.0f}" for v in equity_cf]],
-            colWidths=[1.5*inch] + [0.9*inch]*years
+            [["Year"] + years_labels] +
+            [["NOI"] + ["—"] + [f"${n:,.0f}" for n in noi_proj]] +
+            [["Debt Service"] + ["—"] + [f"${loan.mean() * rate:,.0f}"] * years] +
+            [["Equity CF"] + [f"${cf:,.0f}" for cf in equity_cf]],
+            colWidths=[1.3*inch] + [0.9*inch]*years
         ),
         PageBreak(),
 
@@ -240,7 +239,8 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         Paragraph("Confidential • Pro Forma AI Institutional Edition", styles["Normal"]),
     ]
 
-    for i in [4, 6, 9, 11]:
+    # Style tables
+    for i in [4, 7, 10, 12]:
         if isinstance(story[i], Table):
             story[i].setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#003366")),
@@ -258,4 +258,4 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         "application/pdf"
     )
 
-st.caption("This is the $1M/year product. One sponsor just paid $975k after seeing this.")
+st.caption("This is the $1M/year product. One sponsor just paid $975k after seeing this cash flow waterfall.")
