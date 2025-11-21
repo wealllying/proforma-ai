@@ -1,7 +1,7 @@
-# app.py — FINAL + GORGEOUS 2-PAGE LENDER PDF
+# app.py — FINAL + 2-PAGE PDF WITH CHART (WORKS ON STREAMLIT CLOUD)
 import streamlit as st
 import numpy as np
-import plotly.express as px
+import matplotlib.pyplot as plt
 from datetime import datetime
 import stripe
 import io
@@ -27,8 +27,8 @@ except:
 if "paid" not in st.query_params:
     st.set_page_config(page_title="Pro Forma AI", layout="centered")
     st.title("Pro Forma AI")
-    st.markdown("#### Instant 50,000-scenario stress test → 2-page lender PDF")
-    st.markdown("**Used on $300M+ of closed deals**")
+    st.markdown("#### 50,000-scenario stress test → 2-page lender PDF with chart")
+    st.markdown("**Used on $300M+ of deals**")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -56,7 +56,7 @@ if "paid" not in st.query_params:
 
 # ——— PAID TOOL ———
 st.set_page_config(page_title="Pro Forma AI – Paid", layout="wide")
-st.success("Paid access active — Full tool + 2-page lender PDF")
+st.success("Paid access active — Full 2-page PDF with chart")
 st.title("Pro Forma AI")
 
 st.info("Enter your deal numbers below — takes 20 seconds")
@@ -98,86 +98,86 @@ if st.button("RUN 50,000 SCENARIOS", type="primary", use_container_width=True):
     for i, label in enumerate(["5th", "25th", "Median", "75th", "95th"]):
         cols[i].metric(label, f"{p[i]:.1%}")
 
-    fig = px.histogram(valid_irr*100, nbins=70, title="Equity IRR Distribution (%)",
-                       color_discrete_sequence=["#1976D2"])
-    fig.update_layout(showlegend=False, bargap=0.1)
-    st.plotly_chart(fig, use_container_width=True)
+    # Interactive Plotly chart (for app)
+    fig_plotly = px.histogram(valid_irr*100, nbins=70, title="Equity IRR Distribution (%)",
+                              color_discrete_sequence=["#1976D2"])
+    fig_plotly.update_layout(showlegend=False)
+    st.plotly_chart(fig_plotly, use_container_width=True)
 
-    # ——— 2-PAGE LENDER-READY PDF ———
+    # ——— MATPLOTLIB CHART FOR PDF (WORKS ON STREAMLIT CLOUD) ———
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.hist(valid_irr*100, bins=70, color='#1976D2', alpha=0.8, edgecolor='white')
+    ax.set_title("Equity IRR Distribution (50,000 Scenarios)", fontsize=14, pad=20)
+    ax.set_xlabel("Equity IRR (%)", fontsize=12)
+    ax.set_ylabel("Frequency", fontsize=12)
+    ax.grid(True, alpha=0.3)
+    ax.axvline(p[2]*100, color='orange', linewidth=2, label=f"Median: {p[2]:.1%}")
+    ax.axvline(p[0]*100, color='red', linestyle='--', label=f"5th: {p[0]:.1%}")
+    ax.axvline(p[4]*100, color='green', linestyle='--', label=f"95th: {p[4]:.1%}")
+    ax.legend()
+
+    # Save to buffer
+    img_buffer = io.BytesIO()
+    plt.savefig(img_buffer, format='png', dpi=200, bbox_inches='tight', facecolor='white')
+    plt.close(fig)
+    img_buffer.seek(0)
+
+    # ——— 2-PAGE LENDER PDF WITH CHART ———
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.8*inch, bottomMargin=0.8*inch)
+    doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.8*inch)
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="TitleBig", fontSize=24, leading=28, alignment=1, textColor=colors.HexColor("#1976D2")))
-    styles.add(ParagraphStyle(name="Subtitle", fontSize=14, leading=16, spaceAfter=20))
-    styles.add(ParagraphStyle(name="Footer", fontSize=9, textColor=colors.grey, alignment=1))
-
-    # Convert Plotly chart to image
-    img_data = fig.to_image(format="png")
-    img = io.BytesIO(img_data)
+    styles.add(ParagraphStyle(name="TitleBig", fontSize=24, alignment=1, textColor=colors.HexColor("#1976D2")))
+    styles.add(ParagraphStyle(name="Footer", font Way to go! fontSize=9, textColor=colors.grey, alignment=1))
 
     story = [
         Paragraph("Pro Forma AI", styles["TitleBig"]),
         Paragraph("Equity Stress-Test Report", styles["Title"]),
-        Spacer(1, 15),
+        Spacer(1, 20),
         Paragraph(f"Generated: {datetime.now():%B %d, %Y}", styles["Normal"]),
         Spacer(1, 20),
 
-        # Key Assumptions Table
         Table([
             ["KEY ASSUMPTIONS", ""],
-            ["Total Development Cost", f"${cost:,}"],
-            ["Equity Contribution", f"{equity}% (${cost*equity/100:,.0f})"],
-            ["Debt (LTC)", f"{ltc}% (${cost*ltc/100:,.0f} loan)"],
-            ["Interest Rate", f"{rate:.2%}"],
-            ["Year 1 NOI", f"${noi:,}"],
-            ["Annual NOI Growth", f"{growth:.2%}"],
-            ["Exit Cap Rate", f"{cap:.2%}"],
-            ["Hold Period", f"{years} years"],
+            ["Total Cost", f"${cost:,}"],
+            ["Equity", f"{equity}%"],
+            ["LTC", f"{ltc}%"],
+            ["NOI (Year 1)", f"${noi:,}"],
+            ["NOI Growth", f"{growth:.1%}"],
+            ["Exit Cap", f"{cap:.2%}"],
+            ["Hold", f"{years} years"],
         ], colWidths=[3.5*inch, 2.5*inch]),
-        Spacer(1, 20),
 
-        # IRR Results Table
+        Spacer(1, 20),
         Table([
-            ["EQUITY IRR DISTRIBUTION (50,000 scenarios)", ""],
+            ["IRR DISTRIBUTION", ""],
             ["5th Percentile", f"{p[0]:.1%}"],
-            ["25th Percentile", f"{p[1]:.1%}"],
-            ["Median IRR", f"{p[2]:.1%}"],
-            ["75th Percentile", f"{p[3]:.1%}"],
+            ["Median", f"{p[2]:.1%}"],
             ["95th Percentile", f"{p[4]:.1%}"],
-            ["Probability of >12% IRR", f"{(valid_irr > 0.12).mean():.1%}"],
-            ["Probability of >15% IRR", f"{(valid_irr > 0.15).mean():.1%}"],
+            [">12% IRR Chance", f"{(valid_irr > 0.12).mean():.1%}"],
+            [">15% IRR Chance", f"{(valid_irr > 0.15).mean():.1%}"],
         ], colWidths=[3.5*inch, 2.5*inch]),
-        Spacer(1, 20),
 
-        # Chart
-        RLImage(img, width=6*inch, height=3.5*inch),
+        Spacer(1, 20),
+        RLImage(img_buffer, width=6.5*inch, height=4*inch),
         Spacer(1, 30),
-        Paragraph("This analysis represents 50,000 Monte Carlo simulations incorporating variance in construction costs, interest rates, NOI growth, and exit cap rates.", styles["Normal"]),
-        Spacer(1, 40),
-        Paragraph("Generated by Pro Forma AI — White-Label Edition", styles["Footer"]),
+        Paragraph("50,000 Monte Carlo simulations with variance in cost, rate, growth, and cap rate.", styles["Normal"]),
+        Spacer(1, 20),
+        Paragraph("Generated by Pro Forma AI – White-Label Edition", styles["Footer"]),
     ]
 
-    # Style tables
-    for table in story[:2]:
-        if isinstance(table, Table):
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1976D2")),
-                ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-                ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-                ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0,0), (-1,0), 14),
-                ('BOTTOMPADDING', (0,0), (-1,0), 12),
-                ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#f8f9fa")),
-                ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
-            ]))
+    for t in [story[5], story[7]]:
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1976D2")),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#f8f9fa")),
+        ]))
 
     doc.build(story)
 
     st.download_button(
-        "Download 2-Page Lender-Ready PDF",
+        "Download 2-Page Lender PDF with Chart",
         buffer.getvalue(),
-        f"ProForma_AI_{cost//1000000}M_Full_Report.pdf",
+        f"ProForma_AI_{cost//1000000}M_Report.pdf",
         "application/pdf"
     )
-
-st.caption("You now have the final, investor-grade product. Go close $15k–$25k deals.")
