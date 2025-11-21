@@ -16,7 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 
 # — CONFIG & SECRETS —
-APP_URL = "https://YOUR-REAL-APP.streamlit.app"  # ← CHANGE ONCE
+APP_URL = "https://proforma-ai-f3poyqgcroefu3qwcqwy3m.streamlit.app/"  # ← CHANGE ONCE
 client = OpenAI(api_key=st.secrets["openai"]["api_key"]) if "openai" in st.secrets else None
 
 # — STRIPE —
