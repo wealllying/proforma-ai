@@ -7,4 +7,3 @@ openpyxl
 reportlab
 openai
 pillow
-requests
