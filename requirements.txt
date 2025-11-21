@@ -5,3 +5,6 @@ stripe
 pandas
 openpyxl
 reportlab
+openai
+pillow
+requests
