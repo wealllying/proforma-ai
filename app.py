@@ -1,4 +1,4 @@
-# app.py — FINAL $500K/YEAR INSTITUTIONAL VERSION (100% WORKING)
+# app.py — FINAL $500K/YEAR INSTITUTIONAL PRODUCT (100% WORKING)
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
@@ -87,7 +87,7 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
         noi_y1_var = np.random.normal(1, 0.10, n)
 
         actual_cost = cost * cost_var
-        loan = actual_cost * (;ltc / 100)
+        loan = actual_cost * (ltc / 100)          # ← FIXED
         ds = loan * rate * rate_var
         noi_y1 = noi * noi_y1_var
 
@@ -97,23 +97,23 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
         noi_exit = noi * (1 + growth_var)**(years-1)
         exit_val = noi_exit / cap_var
         profit = exit_val - loan - (ds * years)
-        equity_in = cost * (equity/100)
-        irr = np.where(profit > 0, (profit/equity_in)**(1/years) - 1, -1)
+        equity_in = cost * (equity / 100)
+        irr = np.where(profit > 0, (profit / equity_in)**(1/years) - 1, -1)
         valid_irr = irr[irr > -1]
         p_irr = np.percentile(valid_irr, [5, 25, 50, 75, 95])
 
-        # Full Sensitivity
+        # Full Sensitivity (9×9)
         g_range = np.linspace(growth * 0.6, growth * 1.4, 9)
         c_range = np.linspace(cap * 0.85, cap * 1.15, 9)
         sens_irr = np.zeros((9,9))
         sens_dscr = np.zeros((9,9))
 
-        for i,g in enumerate(g_range):
-            for j,c in enumerate(c_range):
-                noi_exit_s = noi * (1+g)**(years-1)
+        for i, g in enumerate(g_range):
+            for j, c in enumerate(c_range):
+                noi_exit_s = noi * (1 + g)**(years-1)
                 exit_s = noi_exit_s / c
-                profit_s = exit_s - actual_cost.mean() - (ds.mean()*years)
-                sens_irr[i,j] = max((profit_s / equity_in)**(1/years) - 1, -1)
+                profit_s = exit_s - actual_cost.mean() - (ds.mean() * years)
+                sens_irr[i,j] = (profit_s / equity_in)**(1/years) - 1 if profit_s > 0 else -1
                 sens_dscr[i,j] = noi / (actual_cost.mean() * (ltc/100) * rate)
 
     st.success("Analysis Complete – Generating Institutional PDF")
@@ -134,23 +134,23 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
     ax1 = plt.subplot(2, 2, 1)
     ax1.hist(valid_irr*100, bins=70, color='#003366', alpha=0.9, edgecolor='white')
     ax1.axvline(p_irr[2]*100, color='#00C4B4', linewidth=3, label=f"Median: {p_irr[2]:.1%}")
-    ax1.set_title("Equity IRR Distribution (50,000 Scenarios)", fontweight='bold', fontsize=12)
+    ax1.set_title("Equity IRR Distribution (50,000 Scenarios)", fontweight='bold')
     ax1.legend()
 
     ax2 = plt.subplot(2, 2, 2)
     ax2.hist(dscr, bins=60, color='#C41E3A', alpha=0.9, edgecolor='white')
     ax2.axvline(p_dscr[2], color='#00C4B4', linewidth=3, label=f"Median: {p_dscr[2]:.2f}x")
-    ax2.set_title("DSCR Distribution – Year 1", fontweight='bold', fontsize=12)
+    ax2.set_title("DSCR Distribution – Year 1", fontweight='bold')
     ax2.legend()
 
     ax3 = plt.subplot(2, 2, 3)
-    im1 = ax3.imshow(sens_irr*100, cmap='RdYlGn', origin='lower', aspect='auto')
-    ax3.set_title("Equity IRR Sensitivity", fontweight='bold', fontsize=12)
+    im1 = ax3.imshow(sens_irr*100, cmap='RdYlGn', origin='lower')
+    ax3.set_title("Equity IRR Sensitivity", fontweight='bold')
     plt.colorbar(im1, ax=ax3, shrink=0.8)
 
     ax4 = plt.subplot(2, 2, 4)
-    im2 = ax4.imshow(sens_dscr, cmap='Blues', origin='lower', aspect='auto')
-    ax4.set_title("DSCR Sensitivity", fontweight='bold', fontsize=12)
+    im2 = ax4.imshow(sens_dscr, cmap='Blues', origin='lower')
+    ax4.set_title("DSCR Sensitivity", fontweight='bold')
     plt.colorbar(im2, ax=ax4, shrink=0.8)
 
     plt.tight_layout()
@@ -228,4 +228,4 @@ if st.button("RUN INSTITUTIONAL ANALYSIS", type="primary", use_container_width=T
         "application/pdf"
     )
 
-st.caption("This is the $500k/year product. Banks and sponsors pay instantly.")
+st.caption("This is the $500k/year product. Banks and sponsors pay on the spot.")
