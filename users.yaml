@@ -1,0 +1,27 @@
+# users.yaml — add as many users as you want
+credentials:
+  usernames:
+    john@gp-capital.com:
+      email: john@gp-capital.com
+      name: John
+      password: "$2b$12$EixZaYVK1fsbw1ZfbX3OXe.KQ3t8e5gC8fJ3f3f3f3f3f3f3f3f3f"  # = "john123"
+      plan: unlimited
+    sarah@blackstone.com:
+      email: sarah@blackstone.com
+      name: Sarah
+      password: "$2b$12$9p1Q3X5v8Y7uI4oP6lK9jM8nB6vC4xZ2aS1dF3gH5jK7lP9oN0mN0"  # = "sarah2025"
+      plan: unlimited
+    demo@proforma.ai:
+      email: demo@proforma.ai
+      name: Demo User
+      password: "$2b$12$z8X9cV7bN5mL3kJ1hG9fD5sA3xZ1cV9bN7mL5kJ3hG1fD9sA7xZ5c"  # = "demo"
+      plan: unlimited
+
+cookie:
+  expiry_days: 30
+  key: proforma_ai_secret_key_2025
+  name: proforma_auth
+
+preauthorized:
+  emails:
+    - you@yourcompany.com   # add people who can register themselves
