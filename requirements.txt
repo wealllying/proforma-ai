@@ -4,3 +4,5 @@ matplotlib
 plotly
 stripe
 reportlab
+streamlit-authenticator
+PyYAML
