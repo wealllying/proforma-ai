@@ -1,4 +1,26 @@
 {
-  "builds": [{ "src": "app.py", "use": "@vercel/python" }],
-  "routes": [{ "src": "/(.*)", "dest": "app.py" }]
+  "builds": [
+    {
+      "src": "app.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "app.py"
+    }
+  ],
+  "ignore": [
+    ".git",
+    ".next",
+    "node_modules",
+    "*.pyc",
+    "__pycache__",
+    ".cache",
+    "public/assets/large_files/*"
+  ]
 }
