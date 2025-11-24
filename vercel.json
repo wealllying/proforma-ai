@@ -2,7 +2,7 @@
   "builds": [
     {
       "src": "app.py",
-      "use": "@vercel/python",
+      "use": "@vercel/python@latest",
       "config": {
         "maxLambdaSize": "50mb"
       }
@@ -13,14 +13,5 @@
       "src": "/(.*)",
       "dest": "app.py"
     }
-  ],
-  "ignore": [
-    ".git",
-    ".next",
-    "node_modules",
-    "*.pyc",
-    "__pycache__",
-    ".cache",
-    "public/assets/large_files/*"
   ]
 }
