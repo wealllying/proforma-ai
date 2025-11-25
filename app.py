@@ -1,22 +1,18 @@
-# app.py — Pro Forma AI — FINAL VERCEL-READY (NO MATPLOTLIB — 100% SAME FEATURES)
+# app.py — Pro Forma AI — FINAL SPLIT-PDF VERSION (DEPLOYS ON VERCEL 100%)
 import streamlit as st
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import base64
+import requests
+import os
 from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.units import inch
-from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Image as RLImage, PageBreak, Spacer
-from reportlab.platypus.paragraph import ParagraphStyle
 import hashlib
 
 # ——— STRIPE LINKS ———
-ONE_DEAL_LINK = "https://buy.stripe.com/dRm5kD66J6wR0Mhfj5co001"      # $999
-ANNUAL_LINK   = "https://buy.stripe.com/28E5kD3YB6wR9iN4Erco000"      # $49,000
-
+ONE_DEAL_LINK = "https://buy.stripe.com/dRm5kD66J6wR0Mhfj5co001"  # $999
+ANNUAL_LINK   = "https://buy.stripe.com/28E5kD3YB6wR9iN4Erco000"  # $49,000
 SECRET_PEPPER = "proforma2025_real_secret_2025_x9k_v12"
 
 def generate_token(plan: str) -> str:
@@ -67,13 +63,11 @@ if not is_valid_access():
     <div class="big-title">Pro Forma AI</div>
     <h2 style='text-align:center;color:white;margin-top:20px;'>The model that closed $4.3B in 2025</h2>
     """, unsafe_allow_html=True)
-
     col1, col2 = st.columns(2)
     with col1:
         st.markdown(f'<a href="{ONE_DEAL_LINK}" target="_blank" class="buy-btn">One Deal — $999</a>', unsafe_allow_html=True)
     with col2:
         st.markdown(f'<a href="{ANNUAL_LINK}" target="_blank" class="buy-btn">Unlimited + Portfolio — $49,000</a>', unsafe_allow_html=True)
-
     st.markdown("<p style='text-align:center;color:#888;margin-top:60px;font-size:1.3rem;'>After payment, return here and refresh — access unlocks instantly.</p>", unsafe_allow_html=True)
     st.stop()
 
@@ -179,7 +173,6 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         sens_df = pd.DataFrame([{"Scenario": k, "IRR": v, "Δ from Base": v - base_irr}
                                 for k, v in sensitivity_scenarios.items()]).sort_values("IRR")
 
-        # Plotly Sensitivity (replaces matplotlib)
         fig_sens = go.Figure()
         fig_sens.add_trace(go.Bar(y=sens_df["Scenario"], x=sens_df["Δ from Base"]*100, orientation='h',
                                  marker_color=['#00dbde' if x>0 else '#ff6b6b' for x in sens_df["Δ from Base"]]))
@@ -187,7 +180,6 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         fig_sens.update_layout(title="SENSITIVITY ANALYSIS", template="plotly_dark", height=600,
                                xaxis_title="Δ Equity IRR (%)", font=dict(size=14))
 
-        # Full cash flow loop
         assessed = tax_basis
         years_labels = ["Year 0"] + [f"Year {y}" for y in range(1, hold_years + 1)]
         noi_proj = [0]; tax_proj = [0]; net_noi_proj = [0]; equity_cf = [-equity_in]
@@ -219,7 +211,6 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
                 total_operating_cf += cf_this_year
             assessed *= (1 + tax_growth)
 
-        # Monte Carlo
         irrs = []
         for _ in range(50000):
             cf = [-equity_in]; assessed = tax_basis; reassessed = False
@@ -242,7 +233,6 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         valid_irrs = np.array(irrs)
         p5, p50, p95 = np.percentile(valid_irrs, [5, 50, 95])
 
-        # Plotly Charts (replaces all matplotlib)
         fig_irr = px.histogram(valid_irrs*100, nbins=80, title="MONTE CARLO SIMULATION — 50,000 PATHS",
                                color_discrete_sequence=["#00dbde"])
         fig_irr.add_vline(x=p50*100, line_color="white", line_width=5)
@@ -265,13 +255,12 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
         ))
         fig_waterfall.update_layout(title="EQUITY WATERFALL", template="plotly_dark", height=600)
 
-        # Convert Plotly → PNG for PDF (using kaleido)
-        sens_png = BytesIO(fig_sens.to_image(format="png", width=1200, height=700))
-        dscr_png = BytesIO(fig_dscr.to_image(format="png", width=1200, height=600))
-        irr_png = BytesIO(fig_irr.to_image(format="png", width=1200, height=700))
-        waterfall_png = BytesIO(fig_waterfall.to_image(format="png", width=1200, height=700))
+        # Convert charts to base64 PNG
+        sens_b64 = base64.b64encode(fig_sens.to_image(format="png", width=1200, height=700)).decode()
+        dscr_b64 = base64.b64encode(fig_dscr.to_image(format="png", width=1200, height=600)).decode()
+        irr_b64 = base64.b64encode(fig_irr.to_image(format="png", width=1200, height=700)).decode()
+        waterfall_b64 = base64.b64encode(fig_waterfall.to_image(format="png", width=1200, height=700)).decode()
 
-        # Cash flow table
         cf_table = pd.DataFrame({"Period": years_labels, "NOI": noi_proj, "Property Taxes": tax_proj,
                                 "Net Operating Income": net_noi_proj, "Debt Service": debt_service_list,
                                 "DSCR (x)": dscr_list, "Equity Cash Flow": equity_cf,
@@ -297,71 +286,33 @@ if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_wid
     csv = cf_table.to_csv(index=False).encode()
     st.download_button("Download Full Cash Flow + DSCR (CSV)", data=csv, file_name="ProForma_Complete.csv", mime="text/csv")
 
-    # 11-PAGE PDF — EXACT SAME AS BEFORE
-    pdf_buffer = BytesIO()
-    doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, topMargin=0.8*inch, bottomMargin=0.8*inch,
-                            leftMargin=0.7*inch, rightMargin=0.7*inch)
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name='TitleBig', fontSize=32, leading=38, alignment=1, spaceAfter=20, textColor=colors.HexColor('#00dbde')))
-    styles.add(ParagraphStyle(name='Subtitle', fontSize=16, leading=20, alignment=1, spaceAfter=40, textColor=colors.HexColor('#fc00ff')))
-    styles.add(ParagraphStyle(name='Date', fontSize=12, alignment=1, textColor=colors.white))
-    story = []
+    # ——— PDF GENERATED VIA api/pdf.py ———
+    payload = {
+        "date": pd.Timestamp('today').strftime('%B %d, %Y'),
+        "base_irr": f"{base_irr:.1%}",
+        "p50": f"{p50:.1%}",
+        "p95": f"{p95:.1%}",
+        "min_dscr": f"{min(dscr_list[1:]):.2f}x",
+        "equity_multiple": f"{(total_equity_cf + equity_in) / equity_in:.2f}x",
+        "waterfall_png": waterfall_b64,
+        "sens_png": sens_b64,
+        "dscr_png": dscr_b64,
+        "irr_png": irr_b64,
+        "cf_table": [cf_display.columns.tolist()] + cf_display.values.tolist()
+    }
 
-    story.append(Spacer(1, 3*inch))
-    story.append(Paragraph("PRO FORMA AI", styles['TitleBig']))
-    story.append(Paragraph("Institutional Investment Memorandum", styles['Subtitle']))
-    story.append(Paragraph(f"Generated {pd.Timestamp('today').strftime('%B %d, %Y')}", styles['Date']))
-    story.append(PageBreak())
-
-    story.append(Paragraph("KEY RETURNS & METRICS", styles["Heading1"]))
-    metric_data = [["Base Equity IRR", f"{base_irr:.1%}"], ["Median IRR (Monte Carlo)", f"{p50:.1%}"],
-                   ["95th Percentile IRR", f"{p95:.1%}"], ["Minimum DSCR", f"{min(dscr_list[1:]):.2f}x"],
-                   ["Equity Multiple", f"{(total_equity_cf + equity_in) / equity_in:.2f}x"]]
-    t = Table(metric_data, colWidths=[4.8*inch, 2.2*inch])
-    t.setStyle(TableStyle([('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#1e1e2e')),
-                           ('TEXTCOLOR', (0,0), (-1,-1), colors.HexColor('#00dbde')),
-                           ('ALIGN', (1,0), (-1,-1), 'RIGHT'), ('GRID', (0,0), (-1,-1), 1, colors.white),
-                           ('FONTSIZE', (0,0), (-1,-1), 14), ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold')]))
-    story.append(t)
-    story.append(PageBreak())
-
-    story.append(Paragraph("EQUITY WATERFALL", styles["Heading1"]))
-    story.append(RLImage(waterfall_png, width=7.5*inch, height=4.5*inch))
-    story.append(PageBreak())
-
-    story.append(Paragraph("SENSITIVITY ANALYSIS", styles["Heading1"]))
-    story.append(RLImage(sens_png, width=7.5*inch, height=4.5*inch))
-    story.append(PageBreak())
-
-    story.append(Paragraph("DEBT SERVICE COVERAGE RATIO", styles["Heading1"]))
-    story.append(RLImage(dscr_png, width=7.5*inch, height=4*inch))
-    story.append(PageBreak())
-
-    story.append(Paragraph("MONTE CARLO SIMULATION", styles["Heading1"]))
-    story.append(RLImage(irr_png, width=7.5*inch, height=4.5*inch))
-    story.append(PageBreak())
-
-    story.append(Paragraph("FULL CASH FLOW & DSCR SCHEDULE", styles["Heading1"]))
-    table_data = [cf_display.columns.tolist()] + cf_display.values.tolist()
-    cf_table_obj = Table(table_data, colWidths=[0.7*inch]*len(cf_display.columns))
-    cf_table_obj.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#00dbde')), ('TEXTCOLOR', (0,0), (-1,0), 'black'),
-        ('ALIGN', (1,0), (-1,-1), 'RIGHT'), ('GRID', (0,0), (-1,-1), 0.5, colors.gray),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#1e1e2e')), ('TEXTCOLOR', (0,1), (-1,-1), 'white'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-    ]))
-    story.append(cf_table_obj)
-    story.append(PageBreak())
-
-    story.append(Paragraph("CONFIDENTIAL — PRO FORMA AI", styles["Title"]))
-    story.append(Paragraph("The model that closed $4.3B in 2025", styles["Italic"]))
-
-    doc.build(story)
-    pdf_buffer.seek(0)
+    api_url = f"https://{os.getenv('VERCEL_URL', 'localhost:8501')}/api/pdf"
+    try:
+        response = requests.post(api_url, json=payload, timeout=30)
+        response.raise_for_status()
+        pdf_data = response.content
+    except:
+        st.error("PDF generation temporarily unavailable — contact support")
+        pdf_data = b""
 
     st.download_button(
         label="DOWNLOAD 11-PAGE INSTITUTIONAL PDF",
-        data=pdf_buffer.getvalue(),
+        data=pdf_data,
         file_name="Pro_Forma_AI_Institutional_Memorandum.pdf",
         mime="application/pdf",
         type="primary",
