@@ -1,17 +1,10 @@
 {
   "builds": [
-    {
-      "src": "app.py",
-      "use": "@vercel/python@latest",
-      "config": {
-        "maxLambdaSize": "50mb"
-      }
-    }
+    { "src": "app.py", "use": "@vercel/python" },
+    { "src": "api/pdf.py", "use": "@vercel/python" }
   ],
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "app.py"
-    }
+    { "src": "/api/pdf", "dest": "api/pdf.py" },
+    { "src": "/(.*)", "dest": "app.py" }
   ]
 }
