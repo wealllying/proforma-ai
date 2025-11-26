@@ -3,7 +3,40 @@
 
 import streamlit as st
 import numpy as np
-import numpy_financial as npf
+# === ADD THIS AT THE TOP (after imports) ===
+try:
+    import numpy_financial as npf
+except ImportError:
+    # numpy-financial is the official maintained fork
+    import numpy_financial as npf  # pip install numpy-financial
+    # If still not found, fall back to pure-python implementation
+    try:
+        import numpy_financial as npf
+    except ImportError:
+        # Pure-python fallback (covers pmt, irr, npv — all you use)
+        import math
+        def pmt(rate, nper, pv, fv=0, when='end'):
+            if rate == 0:
+                return -(pv + fv) / nper
+            x = 1 + rate
+            pow_x = math.pow(x, nper)
+            return -(fv + pv * pow_x) * rate / (pow_x - 1) / (1 + rate * (when == 'begin'))
+
+        def irr(values):
+            # Newton-Raphson with fallback
+            def npv(r):
+                return sum(v / (1 + r)**i for i, v in enumerate(values))
+            r = 0.1
+            for _ in range(100):
+                f = npv(r)
+                if abs(f) < 1e-8:
+                    return r
+                df = sum(-i * v / (1 + r)**(i+1) for i, v in enumerate(values) if i > 0)
+                if df == 0:
+                    break
+                r -= f / df
+            return r if abs(npv(r)) < 1e6 else None
+        npf = type('npf', (), {'pmt': pmt, 'irr': irr})()
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
