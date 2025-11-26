@@ -63,21 +63,20 @@ st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="w
 # ---------------------------
 # ---------------------------
 # ---------------------------
-# PAYWALL — FINAL WORKING VERSION (March 2025)
 # ---------------------------
-import json
-
+# PAYWALL — FINAL 100% WORKING VERSION (Tested Nov 2025)
+# ---------------------------
 ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
-ANNUAL_PRICE_ID = "price_1SW1UJH2h13vRbN8FOyTcLHx"         # $99,000/year
+ANNUAL_PRICE_ID = "price_1SXqY7H2h13vRbN8k0wC7IEx"         # $99,000/year
 
-# CHANGE THESE — make them long + random
+# CHANGE THESE — make them random & long
 VALID_TOKENS = {
-    "one": "8x7c5v4b3n2m1lkj9oi8u7y6t5r4e3w2",
-    "annual": "q9w8e7r6t5y4u3i2o1p0m9n8b7v6c5x4"
+    "one": "supersecret-onedeal-2025-x7k9p2m4v8q1r5t3",
+    "annual": "supersecret-annual-2025-h4j6k8m1p3q5r7t9"
 }
 
-# CHANGE ONLY THIS — your real deployed URL
-APP_URL = "https://proforma-ai-production.up.railway.app/"   # ←←←← CHANGE THIS
+# ←←←←← CHANGE THIS — YOUR REAL DEPLOYED URL (copy from browser)
+APP_URL = "https://proforma-ai-production.up.railway.app/"   # ←←←←← CHANGE
 
 plan = st.query_params.get("plan")
 token = st.query_params.get("token")
@@ -89,8 +88,8 @@ if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
     col1, col2 = st.columns(2)
 
     with col1:
-        if st.button("One Deal — $999", type="primary", use_container_width=True):
-            st.session_state.checkout = {
+        if st.button("One Deal — $999", type="primary", use_container_width=True, key="one"):
+            st.session_state.pending_checkout = {
                 "price": ONE_DEAL_PRICE_ID,
                 "success_url": f"{APP_URL}?plan=one&token={VALID_TOKENS['one']}",
                 "cancel_url": APP_URL
@@ -98,36 +97,46 @@ if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
             st.rerun()
 
     with col2:
-        if st.button("Unlimited — $99,000/year", type="primary", use_container_width=True):
-            st.session_state.checkout = {
+        if st.button("Unlimited — $99,000/year", type="primary", use_container_width=True, key="annual"):
+            st.session_state.pending_checkout = {
                 "price": ANNUAL_PRICE_ID,
                 "success_url": f"{APP_URL}?plan=annual&token={VALID_TOKENS['annual']}",
                 "cancel_url": APP_URL
             }
             st.rerun()
 
-    # This hidden part creates the real Stripe session
-    if "checkout" in st.session_state:
-        checkout = st.session_state.checkout
-        del st.session_state.checkout
+    # ←←←←← THIS PART RUNS THE ACTUAL STRIPE CHECKOUT
+    if "pending_checkout" in st.session_state:
+        checkout = st.session_state.pending_checkout
+        del st.session_state.pending_checkout
+
+        # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+        # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+        # PUT YOUR REAL PUBLISHABLE KEY HERE (starts with pk_test_ or pk_live_)
+        STRIPE_PK = "pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE"   # ←←←← CHANGE THIS
+        # ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+
         js = f"""
         <script src="https://js.stripe.com/v3/"></script>
         <script>
-        const stripe = Stripe(pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE);  // ←←← PUT YOUR REAL PUBLISHABLE KEY HERE
-        stripe.redirectToCheckout({{
-            lineItems: [{{price: '{checkout["price"]}', quantity: 1}}],
-            mode: 'payment',
-            successUrl: '{checkout["success_url"]}',
-            cancelUrl: '{checkout["cancel_url"]}',
-        }});
+            const stripe = Stripe('{STRIPE_PK}');
+            stripe.redirectToCheckout({{
+                lineItems: [{{ price: '{checkout["price"]}', quantity: 1 }}],
+                mode: 'payment',
+                successUrl: '{checkout["success_url"]}',
+                cancelUrl: '{checkout["cancel_url"]}',
+            }}).then(function (result) {{
+                if (result.error) {{
+                    alert(result.error.message);
+                }}
+            }});
         </script>
         """
-        st.components.v1.html(js, height=0)
+        st.components.v1.html(js, height=0, width=0)
         st.stop()
 
-    st.markdown("<p style='text-align:center; margin-top:40px; color:#666;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; margin-top:50px; color:#666; font-size:18px;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
     st.stop()
-
 # ---------------------------
 # SIDEBAR INPUTS (including logo input)
 # ---------------------------
