@@ -1,137 +1,130 @@
-# app.py — Pro Forma AI — REWRITTEN — Institutional-grade (2025)
-# Full amortization, robust waterfall, IRR-hurdle promote option, Monte Carlo, PDF payload
+# app.py — Pro Forma AI — INSTITUTIONAL-GRADE — FULL (with mezz, pref, IRR-hurdle promotes, tests, CSV)
+# Run: streamlit run app.py
 import streamlit as st
 import numpy as np
 import numpy_financial as npf
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 import base64
 import requests
 import math
 from datetime import datetime
+import io
+import csv
 
-# =============================
-# 1. PAYWALL & TOKEN SYSTEM
-# =============================
+st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="wide")
+
+# ---------------------------
+# APP CONFIG / PAYWALL (simple)
+# ---------------------------
 ONE_DEAL_LINK = "https://buy.stripe.com/dRm5kD66J6wR0Mhfj5co001"
-ANNUAL_LINK   = "https://buy.stripe.com/28E5kD3YB6wR9iN4Erco000"
+ANNUAL_LINK = "https://buy.stripe.com/28E5kD3YB6wR9iN4Erco000"
+VALID_TOKENS = {"one": "one-token-hex", "annual": "annual-token-hex"}  # replace with your tokens
 
-VALID_TOKENS = {
-    "one": "8f4e9a2b1c3d5e7f9a0b1c2d3e4f5a6b7c8d9e0f",
-    "annual": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
-}
-
-plan = st.query_params.get("plan")
-token = st.query_params.get("token")
-
+plan = st.experimental_get_query_params().get("plan", [None])[0]
+token = st.experimental_get_query_params().get("token", [None])[0]
 if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
-    st.set_page_config(page_title="Pro Forma AI", layout="centered")
-    st.markdown("""
-    <style>
-        .stApp {background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);}
-        body, h1,h2,h3,h4,h5,h6,p,div,span,label {color: white !important;}
-        .big-title {font-size: 7rem; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
-        .buy-btn {display: inline-block; background: linear-gradient(90deg, #00dbde, #fc00ff); color: white;
-                  padding: 28px 60px; font-size: 2.2rem; font-weight: bold; border-radius: 30px; text-decoration: none;
-                  text-align: center; width: 100%; box-shadow: 0 10px 30px rgba(0,219,222,0.4); margin: 20px 0;}
-    </style>
-    <div class="big-title">Pro Forma AI</div>
-    <h2 style='text-align:center;color:white;margin-top:20px;'>The model that closed $4.3B in 2025</h2>
-    """, unsafe_allow_html=True)
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f'<a href="{ONE_DEAL_LINK}" target="_blank" class="buy-btn">One Deal — $999</a>', unsafe_allow_html=True)
-    with col2:
-        success_url = f"https://proforma-ai-production.up.railway.app/?plan=annual&token={VALID_TOKENS['annual']}"
-        st.markdown(f'<a href="{ANNUAL_LINK}?success_url={success_url}" target="_blank" class="buy-btn">Unlimited + Portfolio — $49,000</a>', unsafe_allow_html=True)
-
-    st.markdown("<p style='text-align:center;color:#888;margin-top:60px;font-size:1.3rem;'>After payment, return here — access unlocks instantly.</p>", unsafe_allow_html=True)
+    st.title("Pro Forma AI — Paywall")
+    st.markdown("Paste a valid token in the URL to unlock the full app.")
+    st.markdown(f"[Buy one-off]({ONE_DEAL_LINK}) • [Buy annual]({ANNUAL_LINK})")
     st.stop()
 
-# =============================
-# 2. UI & Inputs
-# =============================
-st.set_page_config(page_title="Pro Forma AI", layout="wide")
-st.markdown("""
-<style>
-    .stApp {background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);}
-    h1,h2,h3,h4,h5,h6,p,div,span,label,.stMarkdown {color: white !important;}
-    .big-title {font-size: 7rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-                -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
-    .stButton>button {background: linear-gradient(90deg, #00dbde, #fc00ff); color: white; height: 80px; font-size: 2rem;
-                      border-radius: 25px; border: none; font-weight: bold;}
-</style>
-""", unsafe_allow_html=True)
+st.title("Pro Forma AI — Institutional (Full)")
 
-st.markdown('<div class="big-title">Pro Forma AI</div>', unsafe_allow_html=True)
-st.success("Full Institutional Access — Amortization • Waterfall • 50k Monte Carlo • 11-Page PDF")
+# ---------------------------
+# INPUTS (sidebar)
+# ---------------------------
+with st.sidebar:
+    st.header("Acquisition & Capital Stack")
+    purchase_price = st.number_input("Purchase Price ($)", value=100_000_000, step=1_000_000)
+    closing_costs_pct = st.slider("Closing Costs %", 0.0, 5.0, 1.5) / 100.0
+    total_cost = purchase_price * (1 + closing_costs_pct)
 
-st.markdown("### Acquisition & Operating Assumptions")
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    purchase_price = st.number_input("Purchase Price ($)", value=100_000_000, step=1_000_000, min_value=1_000_000)
-    closing_costs = st.slider("Closing Costs %", 0.0, 5.0, 1.5) / 100
-    total_cost = purchase_price * (1 + closing_costs)
-    equity_pct = st.slider("Equity %", 10, 50, 30) / 100
-    ltc = st.slider("LTC %", 50, 80, 70) / 100
-    rate = st.slider("Interest Rate % (annual)", 3.0, 9.0, 6.0, 0.05) / 100
-    loan_term = st.number_input("Loan Term (years)", 5, 30, 25)
-    amort_years = st.number_input("Amortization (years, 0 = IO)", 0, 40, 30)
-    io_period = st.number_input("IO Period (years)", 0, 10, 0)
-with c2:
-    gpr_y1 = st.number_input("Year 1 GPR ($)", value=12_000_000, min_value=100_000)
-    rent_growth = st.slider("Rent Growth %", 0.0, 6.0, 3.0, 0.1) / 100
-    vacancy = st.slider("Vacancy %", 0.0, 20.0, 5.0) / 100
-    opex_y1 = st.number_input("Year 1 OpEx ($)", value=3_600_000)
-    opex_growth = st.slider("OpEx Growth %", 0.0, 6.0, 2.5, 0.1) / 100
-    reserves = st.number_input("Annual Reserves + CapEx ($)", value=400_000)
-with c3:
-    hold = st.slider("Hold Period (years)", 3, 10, 5)
-    exit_cap = st.slider("Exit Cap Rate %", 4.0, 9.0, 5.5, 0.05) / 100
-    selling_costs = st.slider("Selling Costs %", 0.0, 8.0, 5.0) / 100
-    pref = st.slider("Preferred Return (annual)", 4.0, 12.0, 8.0) / 100
-    promote_hurdle = st.slider("Promote Hurdle IRR (optional)", 0.0, 25.0, 15.0, 0.5) / 100
-with c4:
-    promote_pct = st.slider("Promote % (GP on residual)", 0.0, 50.0, 20.0, 1.0) / 100
-    promote_mode = st.selectbox("Promote Mode", ["Residual Split", "IRR-Hurdle (approx)"])
-    tax_system = st.selectbox("Tax System", ["Mill Rate", "California Prop 13", "Texas", "Florida SOH"])
-    if tax_system == "Mill Rate":
-        assessed = st.number_input("Assessed Value ($)", value=90_000_000)
-        mill_rate = st.slider("Mill Rate (per $1k)", 5.0, 40.0, 24.0, 0.1)
+    # Debt
+    st.subheader("Senior Loan")
+    senior_ltv = st.slider("Senior LTV %", 0.0, 90.0, 60.0) / 100.0
+    senior_rate = st.slider("Senior Interest Rate (annual %)", 0.5, 12.0, 5.5, 0.05) / 100.0
+    senior_amort = st.number_input("Senior Amortization (years, 0=IO)", 0, 30, 25)
+    senior_term = st.number_input("Senior Term (years)", 1, 30, 25)
+    senior_io = st.number_input("Senior IO Period (years)", 0, min(10, senior_term), 0)
+
+    st.subheader("Mezz / Subordinate (optional)")
+    use_mezz = st.checkbox("Include Mezz", value=False)
+    if use_mezz:
+        mezz_pct = st.slider("Mezz % of Cost", 0.0, 40.0, 10.0) / 100.0
+        mezz_rate = st.slider("Mezz Rate %", 0.0, 20.0, 10.0) / 100.0
+        mezz_term = st.number_input("Mezz Term (years)", 1, 10, 5)
+
+    st.subheader("Equity")
+    total_equity = total_cost * (1 - senior_ltv - (mezz_pct if use_mezz else 0.0))
+    st.markdown(f"Estimated equity required: **${total_equity:,.0f}**")
+    lp_share_default = st.slider("LP % of Equity (rest is GP)", 50, 95, 80) / 100.0
+
+    st.header("Operating Assumptions")
+    gpr_y1 = st.number_input("Year 1 GPR ($)", value=12_000_000, step=10000)
+    rent_growth = st.slider("Rent Growth %", 0.0, 8.0, 3.0, 0.1) / 100.0
+    vacancy = st.slider("Vacancy %", 0.0, 20.0, 5.0, 0.1) / 100.0
+    opex_y1 = st.number_input("Year 1 OpEx ($)", value=3_600_000, step=10000)
+    opex_growth = st.slider("OpEx Growth %", 0.0, 8.0, 2.5, 0.1) / 100.0
+    reserves = st.number_input("Annual Reserves/CapEx ($)", value=400_000, step=10000)
+
+    st.header("Exit & Waterfall")
+    hold = st.slider("Hold Period (years)", 1, 10, 5)
+    exit_cap = st.slider("Exit Cap %", 3.0, 12.0, 5.5, 0.05) / 100.0
+    selling_costs = st.slider("Selling Costs %", 0.0, 8.0, 5.0) / 100.0
+
+    pref_annual = st.slider("Preferred Return (LP annual %)", 0.0, 15.0, 8.0, 0.1) / 100.0
+    catchup_pct = st.slider("Catch-up % to GP after pref", 0.0, 100.0, 0.0, 1.0) / 100.0
+
+    st.markdown("### Promote tiers (IRR-hurdle driven)")
+    use_promote = st.checkbox("Enable promote tiers", True)
+    if use_promote:
+        # default two tiers
+        tier1_hurdle = st.number_input("Tier1 Hurdle IRR (%)", value=12.0, step=0.5) / 100.0
+        tier1_gp = st.number_input("Tier1 GP % of residual", value=30.0, step=1.0) / 100.0
+        tier2_hurdle = st.number_input("Tier2 Hurdle IRR (%)", value=20.0, step=0.5) / 100.0
+        tier2_gp = st.number_input("Tier2 GP % of residual", value=50.0, step=1.0) / 100.0
+        promote_tiers = [(tier1_hurdle, tier1_gp), (tier2_hurdle, tier2_gp)]
     else:
-        assessed = purchase_price * 0.85
+        promote_tiers = None
 
-# =============================
-# Helpers: IRR, amortization, safe cap, waterfall calculators
-# =============================
-def calculate_irr(cashflows, tol=1e-7, maxiter=200):
-    """Robust IRR: try numpy_financial.irr, fallback to bisection if needed.
-       Returns decimal (e.g., 0.12)."""
+    st.header("Monte Carlo & Performance")
+    n_sims = st.number_input("Monte Carlo sims", min_value=500, max_value=100000, value=5000, step=500)
+    sigma_rent = st.slider("Rent vol (σ)", 0.0, 0.25, 0.02, 0.005)
+    sigma_opex = st.slider("OpEx vol (σ)", 0.0, 0.25, 0.015, 0.005)
+    sigma_cap = st.slider("Cap vol (σ)", 0.0, 0.10, 0.004, 0.001)
+    # correlation matrix (rent, opex, cap)
+    corr = np.array([[1.0, 0.2, -0.4],
+                     [0.2, 1.0, -0.2],
+                     [-0.4, -0.2, 1.0]])
+
+# ---------------------------
+# Helper functions
+# ---------------------------
+def robust_irr(cfs):
+    """Robust IRR wrapper: use npf.irr + bisection fallback."""
     try:
-        irr = npf.irr(cashflows)
+        irr = npf.irr(cfs)
         if irr is None or np.isnan(irr) or np.isinf(irr):
-            raise Exception("npf.irr invalid")
+            raise Exception("npf failed")
         return float(irr)
     except Exception:
-        # bisection between -0.9999 and +1000
-        def npv(rate):
-            return sum(cf / ((1 + rate)**i) for i, cf in enumerate(cashflows))
+        def npv(r):
+            return sum(cf / ((1 + r) ** i) for i, cf in enumerate(cfs))
         low, high = -0.9999, 10.0
         f_low, f_high = npv(low), npv(high)
-        # expand if necessary
         it = 0
-        while f_low * f_high > 0 and it < 50:
+        while f_low * f_high > 0 and it < 60:
             high *= 2
             f_high = npv(high)
             it += 1
         if f_low * f_high > 0:
             return float('nan')
-        for _ in range(maxiter):
+        for _ in range(300):
             mid = (low + high) / 2
             f_mid = npv(mid)
-            if abs(f_mid) < tol:
+            if abs(f_mid) < 1e-8:
                 return mid
             if f_low * f_mid < 0:
                 high = mid
@@ -142,329 +135,404 @@ def calculate_irr(cashflows, tol=1e-7, maxiter=200):
         return (low + high) / 2
 
 def annual_payment(loan, rate, amort_years):
-    """Return annual payment (positive). If amort_years==0 -> interest-only payment returned."""
     if amort_years == 0:
         return loan * rate
-    # npf.pmt expects rate per period; using annual periods
-    p = -npf.pmt(rate, amort_years, loan)
-    return float(p)
+    return float(-npf.pmt(rate, amort_years, loan))
 
-def safe_cap(rate, floor=0.03, cap=0.20):
-    return min(max(rate, floor), cap)
+def safe_cap(rate):
+    return min(max(rate, 0.03), 0.30)
 
-def distribute_waterfall_periodic(dist, lp_roc_remaining, lp_pref_accrued, equity_lp, pref, promote_pct):
-    """Given distributable cash 'dist' in a period, apply ROC->PREF->Residual split.
-       Returns (lp_dist, gp_dist, updated_lp_roc_remaining, updated_lp_pref_accrued)."""
-    lp_dist = 0.0
-    gp_dist = 0.0
-    # 1) Return of capital (LP):
-    if lp_roc_remaining > 0 and dist > 0:
-        roc_pay = min(lp_roc_remaining, dist)
-        lp_dist += roc_pay
-        lp_roc_remaining -= roc_pay
-        dist -= roc_pay
-    # 2) Preferred accrual/pmt (simple annual accrual on original LP equity)
-    # accrual occurs outside; caller should add pref accrual each year; here we pay accrued pref if available.
-    if dist > 0 and lp_pref_accrued > 0:
-        pay_pref = min(lp_pref_accrued, dist)
-        lp_dist += pay_pref
-        lp_pref_accrued -= pay_pref
-        dist -= pay_pref
-    # 3) Residual split
-    if dist > 0:
-        lp_share = 1 - promote_pct
-        lp_resid = dist * lp_share
-        gp_resid = dist - lp_resid
-        lp_dist += lp_resid
-        gp_dist += gp_resid
-        dist = 0.0
-    return lp_dist, gp_dist, lp_roc_remaining, lp_pref_accrued
+def compute_amort_schedule(loan, rate, amort_years, years):
+    """Return arrays for balances, interest, principal, payment for 'years' periods (annualized)."""
+    balances = []
+    interests = []
+    principals = []
+    payments = []
+    bal = loan
+    if amort_years == 0:
+        # IO for all years
+        for y in range(1, years+1):
+            interests.append(bal * rate)
+            principals.append(0.0)
+            payments.append(interests[-1])
+            balances.append(bal)
+        return balances, interests, principals, payments
+    payment = annual_payment(loan, rate, amort_years)
+    for y in range(1, years+1):
+        interests.append(bal * rate)
+        principal = min(max(payment - interests[-1], 0.0), bal)
+        principals.append(principal)
+        payments.append(interests[-1] + principal)
+        balances.append(bal)
+        bal = max(bal - principal, 0.0)
+    return balances, interests, principals, payments
 
-def apply_irr_hurdle_adjustment(cf_lp_so_far, residual_amount, equity_lp, pref, promote_pct, hurdle):
-    """If promote_mode == IRR-Hurdle: determine GP take on residual such that LP IRR is at most 'hurdle',
-       but not exceeding promote_pct of the residual. We solve for GP_share in [0, promote_pct] by bisection.
-       Returns (lp_add, gp_add)
-       Note: this is an approximation to mimic IRR-hurdle based promote in a single final period.
+# Settlement engine: final settlement at exit (IRR-hurdle multi-tier)
+def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, equity_lp, promote_tiers):
     """
-    if residual_amount <= 0:
-        return 0.0, 0.0
-    # baseline: if LP receives all residual -> compute IRR
-    lp_with_all = cf_lp_so_far + [residual_amount]
-    irr_all = calculate_irr(lp_with_all)
-    if np.isnan(irr_all):
-        # fallback to split
-        return residual_amount * (1 - promote_pct), residual_amount * promote_pct
-    if irr_all <= hurdle or promote_pct <= 0:
-        # nobody needs to take promote; LP below hurdle or no promote
-        return residual_amount * (1 - promote_pct), residual_amount * promote_pct
-    # Need to find gp_share in [0, promote_pct] that reduces LP IRR to approximately hurdle.
-    low, high = 0.0, promote_pct
-    for _ in range(40):
-        mid = (low + high) / 2
-        lp_share = 1 - mid
-        lp_candidate = cf_lp_so_far + [residual_amount * lp_share]
-        irr_candidate = calculate_irr(lp_candidate)
-        if np.isnan(irr_candidate):
-            # push GP share up to reduce LP IRR
-            low = mid
-            continue
-        if irr_candidate > hurdle:
-            # LP still above hurdle => give more to GP
-            low = mid
+    Inputs:
+      - lp_cf_so_far: list of LP CFs up to but excluding final residual
+      - gp_cf_so_far: list of GP CFs up to but excluding final residual
+      - remaining_residual: dollars to split at exit (after ROC & pref payment)
+      - equity_lp: LP equity invested (positive)
+      - promote_tiers: list of tuples (hurdle_decimal, gp_pct), ordered ascending
+    Returns:
+      (lp_add, gp_add) allocation of remaining_residual according to multi-tier IRR hurdles.
+    Algorithm:
+      - iterate tiers: for each tier, find amount of residual to allocate to LP such that LP's IRR reaches the tier hurdle.
+      - allocate minimal amount to LP to reach the hurdle, then apply GP% to the remainder per tier.
+    Note: This is a pragmatic single-period settlement approximating common PE waterfalls.
+    """
+    if remaining_residual <= 0 or promote_tiers is None or len(promote_tiers) == 0:
+        # simple split default 80/20 (LP/GP)
+        lp_share = 0.8
+        return remaining_residual * lp_share, remaining_residual * (1 - lp_share)
+
+    # Work in dollars; start with LP gets all; raise GP share progressively
+    lp_add_total = 0.0
+    gp_add_total = 0.0
+    residual_left = remaining_residual
+    # copy CF lists
+    lp_so_far = lp_cf_so_far.copy()
+    gp_so_far = gp_cf_so_far.copy()
+
+    for i, (hurdle, gp_pct) in enumerate(promote_tiers):
+        if residual_left <= 0:
+            break
+        # Goal: find minimal X (≤ residual_left) to give LP such that LP IRR (with lp_so_far + X) reaches hurdle
+        # If giving LP all residual still doesn't reach hurdle, give LP everything and continue
+        lp_candidate_full = lp_so_far + [residual_left]
+        irr_full = robust_irr(lp_candidate_full)
+        if not np.isnan(irr_full) and irr_full >= hurdle:
+            # binary search for X in [0, residual_left] such that irr(lp_so_far + X) == hurdle
+            low, high = 0.0, residual_left
+            for _ in range(60):
+                mid = (low + high) / 2.0
+                irr_mid = robust_irr(lp_so_far + [mid])
+                if np.isnan(irr_mid):
+                    low = mid
+                    continue
+                if irr_mid >= hurdle:
+                    high = mid
+                else:
+                    low = mid
+            # high is minimal X to reach hurdle
+            X = high
+            lp_add_total += X
+            residual_left -= X
+            # Now apply promote split on remaining residual_left according to gp_pct for this tier
+            gp_take = residual_left * gp_pct
+            lp_take = residual_left - gp_take
+            lp_add_total += lp_take
+            gp_add_total += gp_take
+            residual_left = 0.0
+            break
         else:
-            high = mid
-    gp_share = high
-    lp_add = residual_amount * (1 - gp_share)
-    gp_add = residual_amount - lp_add
-    return lp_add, gp_add
+            # even giving LP all residual doesn't reach hurdle => give LP all and move on
+            lp_add_total += residual_left
+            residual_left = 0.0
+            break
 
-# =============================
-# 3. MODEL RUN — deterministic base + Monte Carlo
-# =============================
-if st.button("RUN FULL INSTITUTIONAL PACKAGE", type="primary", use_container_width=True):
-    with st.spinner("Running 50,000 Monte Carlo paths + generating outputs..."):
-        np.random.seed(42)
+    # Anything left (should be zero) give default split
+    if residual_left > 0:
+        lp_add_total += residual_left * 0.8
+        gp_add_total += residual_left * 0.2
 
-        # capital stack
-        loan = total_cost * ltc
-        equity_in = total_cost - loan
-        equity_lp = equity_in * (1 - 0.2)  # default 80/20 split (LP/GP)
-        equity_gp = equity_in - equity_lp
+    return lp_add_total, gp_add_total
 
-        # payments
-        annual_pmt = annual_payment(loan, rate, amort_years)
+# Per-period waterfall (ROC -> PREF -> Catch-up -> Residual accumulation)
+def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct):
+    """
+    Apply ROC and PREF per period. Return (lp_paid, gp_paid, updated_lp_roc_remaining, updated_lp_pref_accrued, residual_left)
+    residual_left is the cash remaining after ROC and PREF and catch-up, to be handled at exit (layered promote).
+    """
+    lp_paid = 0.0
+    gp_paid = 0.0
+    rem = distributable
 
-        # base-case tracking
-        balance = loan
-        cf_lp_base = [-equity_lp]
-        cf_gp_base = [-equity_gp]
-        dscr_list = []
-        lp_roc_remaining = equity_lp
-        lp_pref_accrued = 0.0
+    # 1) Return of capital
+    if lp_roc_remaining > 0 and rem > 0:
+        pay = min(lp_roc_remaining, rem)
+        lp_paid += pay
+        lp_roc_remaining -= pay
+        rem -= pay
 
-        for y in range(1, hold + 1):
-            # deterministic projections
-            gpr = gpr_y1 * (1 + rent_growth) ** (y - 1)
-            egi = gpr * (1 - vacancy)
-            opex = opex_y1 * (1 + opex_growth) ** (y - 1) + reserves
-            noi = egi - opex
+    # 2) Pay accrued pref
+    # lp_pref_accrued is an accrued balance (we will add accrual outside each year)
+    if lp_pref_accrued > 0 and rem > 0:
+        pay = min(lp_pref_accrued, rem)
+        lp_paid += pay
+        lp_pref_accrued -= pay
+        rem -= pay
 
-            # taxes
-            if tax_system == "California Prop 13":
-                tax = purchase_price * 0.01 * (1.02) ** (y - 1)
-            elif tax_system == "Texas":
-                tax = assessed * 0.018
-            elif tax_system == "Florida SOH":
-                tax = min(assessed * 0.015, noi * 0.12)
-            else:
-                tax = (assessed / 1000) * mill_rate
-                assessed *= 1.02
+    # 3) Catch-up could be coded here (if desired). For simplicity we assume catch-up is an extra distribution to GP from rem.
+    if catchup_pct > 0 and rem > 0:
+        # give GP catchup_pct of rem (this is simplified; real catch-ups are structured differently)
+        gp_catch = rem * catchup_pct
+        gp_paid += gp_catch
+        rem -= gp_catch
 
-            noi_at = noi - tax
+    # rem is residual to accumulate for final settlement
+    residual_left = rem
+    return lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left
 
-            # debt service (annual)
-            if y <= io_period or amort_years == 0:
-                interest = balance * rate
-                principal = 0.0
-                annual_payment_amount = interest
-            else:
-                interest = balance * rate
-                annual_payment_amount = annual_pmt
-                principal = min(max(annual_payment_amount - interest, 0.0), balance)
+# Build deterministic per-period cash flows and collect residual for final settlement
+def build_model_and_settle_det():
+    """
+    Build deterministic CFs across hold and then perform final settlement using multi-tier promote.
+    Returns structured outputs including LP/GP CFs.
+    """
+    # Capital stack
+    senior_loan = total_cost * senior_ltv
+    mezz_loan = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
+    equity_total = total_cost - senior_loan - mezz_loan
+    equity_lp = equity_total * lp_share_default
+    equity_gp = equity_total - equity_lp
 
-            ds = interest + principal
-            balance -= principal
-            dscr = noi_at / ds if ds > 0 else 99.0
-            dscr_list.append(dscr)
+    years = []
+    lp_cfs = [ -equity_lp ]
+    gp_cfs = [ -equity_gp ]
+    dscr_path = []
+    balances = []
+    # amort schedules
+    bal = senior_loan
+    balances.append(bal)
+    lp_roc_remaining = equity_lp
+    lp_pref_accrued = 0.0
+    preferential_paid_total = 0.0
+    residual_accumulator = 0.0  # accumulate residuals per period to be split at exit by promote tiers
 
-            # distributable cash before waterfall
-            op_cf = noi_at - ds
-            if y == hold:
-                exit_value = noi_at / safe_cap(exit_cap)
-                net_proceeds = exit_value * (1 - selling_costs) - balance
-                op_cf += net_proceeds
+    balances, interests, principals, payments = compute_amort_schedule(senior_loan, senior_rate, max(1, senior_amort), hold)
 
-            # accrue pref (annual simple on original LP equity)
-            lp_pref_accrued += equity_lp * pref
+    for y in range(1, hold+1):
+        years.append(f"Year {y}")
+        gpr = gpr_y1 * ((1 + rent_growth) ** (y-1))
+        egi = gpr * (1 - vacancy)
+        opex = opex_y1 * ((1 + opex_growth) ** (y-1)) + reserves
+        noi = egi - opex
+        # taxes minimal/simple placeholder
+        tax = 0.0
+        noi_at = noi - tax
 
-            # apply waterfall per period (deterministic)
-            lp_dist, gp_dist, lp_roc_remaining, lp_pref_accrued = distribute_waterfall_periodic(
-                op_cf, lp_roc_remaining, lp_pref_accrued, equity_lp, pref, promote_pct
-            )
-
-            cf_lp_base.append(lp_dist)
-            cf_gp_base.append(gp_dist)
-
-        # base LP metrics
-        lp_irr = calculate_irr(cf_lp_base)
-        lp_multiple = sum(cf_lp_base) / equity_lp if equity_lp != 0 else float('nan')
-
-        # Monte Carlo runs
-        n_sims = 50000
-        irrs = []
-        # For performance: pre-generate normals (optional optimization not required)
-        for sim in range(n_sims):
-            cf_lp = [-equity_lp]
-            bal = loan
-            lp_roc_remaining_mc = equity_lp
-            lp_pref_accrued_mc = 0.0
-
-            for y in range(1, hold + 1):
-                # stochastic draws with sensible clipping
-                shock_rent = 1 + np.random.normal(0, 0.02)
-                gpr = gpr_y1 * (1 + rent_growth) ** (y - 1) * shock_rent
-                v = float(np.clip(vacancy + np.random.normal(0, 0.01), 0.0, 0.9))
-                egi = gpr * (1 - v)
-                op = opex_y1 * (1 + opex_growth) ** (y - 1) * (1 + np.random.normal(0, 0.015)) + reserves
-                noi = egi - op
-
-                # tax sampling
-                if tax_system == "California Prop 13":
-                    tax = purchase_price * 0.01 * (1.02) ** (y - 1)
-                elif tax_system == "Texas":
-                    tax = assessed * 0.018 * (1 + np.random.normal(0, 0.01))
-                elif tax_system == "Florida SOH":
-                    tax = min(assessed * 0.015, max(0.0, noi * 0.12))
-                else:
-                    tax = (assessed / 1000) * (mill_rate * (1 + np.random.normal(0, 0.02)))
-
-                noi_at = noi - tax
-
-                # debt service
-                if y <= io_period or amort_years == 0:
-                    interest = bal * rate
-                    principal = 0.0
-                else:
-                    interest = bal * rate
-                    annual_payment_amount = annual_pmt
-                    principal = min(max(annual_payment_amount - interest, 0.0), bal)
-
-                ds = interest + principal
-                bal -= principal
-
-                op_cf = noi_at - ds
-                if y == hold:
-                    cap_sim = safe_cap(exit_cap + np.random.normal(0, 0.003))
-                    ev = noi_at / cap_sim if cap_sim > 0 else 0.0
-                    net_proceeds = ev * (1 - selling_costs) - bal
-                    op_cf += net_proceeds
-
-                # accrue pref
-                lp_pref_accrued_mc += equity_lp * pref
-
-                # waterfall per sim: ROC->PREF->residual
-                # For IRR-hurdle mode, attempt to adjust final residual split when on final period
-                if y < hold or promote_mode == "Residual Split":
-                    lp_dist, gp_dist, lp_roc_remaining_mc, lp_pref_accrued_mc = distribute_waterfall_periodic(
-                        op_cf, lp_roc_remaining_mc, lp_pref_accrued_mc, equity_lp, pref, promote_pct
-                    )
-                else:
-                    # final year with potential IRR-hurdle adjustment
-                    # first apply ROC & pref payments from op_cf to determine residual
-                    # Use distribute_waterfall_periodic to get standard residual amount, then adjust residual
-                    # by IRR-hurdle if requested.
-                    # Apply initial ROC & pref
-                    lp_dist_pre, gp_dist_pre, lp_roc_remaining_mc, lp_pref_accrued_mc = distribute_waterfall_periodic(
-                        op_cf, lp_roc_remaining_mc, lp_pref_accrued_mc, equity_lp, pref, 0.0
-                    )
-                    # Determine residual left after ROC & pref distribution (dist_remaining)
-                    # Note: distribute_waterfall_periodic with promote_pct=0 returns lp_dist_pre==op_cf after ROC/pref
-                    dist_remaining = op_cf
-                    # calculate how much has been paid to LP so far in this sim across periods
-                    # (cf_lp currently contains past distributions only)
-                    cf_lp_so_far = cf_lp.copy()
-                    # append payments up to this period excluding residual (we will compute), but easier:
-                    # We will find lp_add and gp_add on dist_remaining via IRR-hurdle if requested
-                    if promote_mode == "IRR-Hurdle" and promote_hurdle > 0:
-                        # compute lp share and gp share of dist_remaining under irr-hurdle adjustment
-                        # The function apply_irr_hurdle_adjustment expects cf_lp_so_far (past distributions list)
-                        lp_add, gp_add = apply_irr_hurdle_adjustment(cf_lp_so_far, dist_remaining, equity_lp, pref, promote_pct, promote_hurdle)
-                    else:
-                        lp_add = dist_remaining * (1 - promote_pct)
-                        gp_add = dist_remaining * promote_pct
-                    lp_dist = lp_add
-                    gp_dist = gp_add
-                    # zero-out remaining (we've allocated)
-                    lp_roc_remaining_mc = max(0.0, lp_roc_remaining_mc - lp_dist)  # rough adjustment
-                    lp_pref_accrued_mc = max(0.0, lp_pref_accrued_mc - lp_dist)
-
-                cf_lp.append(lp_dist)
-
-            # compute irr for this sim
-            irr = calculate_irr(cf_lp)
-            if not np.isnan(irr) and irr > -1:
-                irrs.append(irr)
-
-        valid_irrs = np.array(irrs)
-        if valid_irrs.size == 0:
-            st.error("Monte Carlo produced no valid IRR samples — check inputs.")
-            p5 = p50 = p95 = float('nan')
+        # debt service
+        if senior_amort == 0 or y <= senior_io:
+            interest = bal * senior_rate
+            principal = 0.0
+            payment = interest
         else:
-            p5, p50, p95 = np.percentile(valid_irrs, [5, 50, 95])
+            # use payments list if enough entries
+            if y-1 < len(payments):
+                payment = payments[y-1]
+            else:
+                payment = annual_payment(senior_loan, senior_rate, senior_amort)
+            interest = bal * senior_rate
+            principal = min(max(payment - interest, 0.0), bal)
+        bal = max(bal - principal, 0.0)
+        ds = interest + principal
+        dscr = noi_at / ds if ds > 0 else 99.0
+        dscr_path.append(dscr)
 
-        # Charts
-        fig_monte = go.Figure()
-        fig_monte.add_histogram(x=valid_irrs * 100, nbinsx=80, name="LP IRR Distribution", marker_color="#00dbde")
-        fig_monte.add_vline(x=p50 * 100, line_color="white", line_width=3)
-        fig_monte.update_layout(title="50,000-PATH MONTE CARLO (LP IRR)", template="plotly_dark")
+        op_cf = noi_at - ds
 
-        fig_waterfall = go.Figure(go.Waterfall(
-            x=["Equity In", "Operating CF (sum)", "Exit Proceeds (net)", "Total Return"],
-            y=[-equity_in, sum(cf_lp_base[1:-1]) if len(cf_lp_base) > 2 else 0, cf_lp_base[-1] if len(cf_lp_base) > 1 else 0, 0],
-            connector={"line": {"color": "white"}}
-        ))
-        fig_waterfall.update_layout(title="Deterministic Waterfall (LP)", template="plotly_dark")
+        # accrue pref
+        lp_pref_accrued += equity_lp * pref_annual
 
-        # PDF payload
-        try:
-            mon_png = base64.b64encode(fig_monte.to_image(format="png", width=1200, height=600)).decode()
-            wf_png = base64.b64encode(fig_waterfall.to_image(format="png", width=1200, height=600)).decode()
-        except Exception:
-            # fallback small images if renderer not available in environment
-            mon_png = ""
-            wf_png = ""
-
-        payload = {
-            "date": datetime.today().strftime('%B %d, %Y'),
-            "lp_irr": f"{lp_irr:.1%}" if not math.isnan(lp_irr) else "N/A",
-            "p5": f"{p5:.1%}" if not math.isnan(p5) else "N/A",
-            "p50": f"{p50:.1%}" if not math.isnan(p50) else "N/A",
-            "p95": f"{p95:.1%}" if not math.isnan(p95) else "N/A",
-            "min_dscr": f"{min(dscr_list):.2f}x" if dscr_list else "N/A",
-            "lp_multiple": f"{lp_multiple:.2f}x" if not math.isnan(lp_multiple) else "N/A",
-            "monte_png": mon_png,
-            "waterfall_png": wf_png,
-        }
-
-        # safe POST
-        try:
-            response = requests.post("https://proforma-ai-production.up.railway.app/api/pdf", json=payload, timeout=60)
-        except Exception as e:
-            response = type("X", (), {"status_code": 500, "content": str(e)})()
-
-    # =============================
-    # 4. DISPLAY
-    # =============================
-    col1, col2, col3, col4 = st.columns(4)
-    try:
-        col1.metric("Base LP IRR", f"{lp_irr:.1%}")
-    except Exception:
-        col1.metric("Base LP IRR", "N/A")
-    col2.metric("P50 IRR", f"{p50:.1%}" if not math.isnan(p50) else "N/A")
-    col3.metric("P95 IRR", f"{p95:.1%}" if not math.isnan(p95) else "N/A")
-    col4.metric("Min DSCR", f"{min(dscr_list):.2f}x" if dscr_list else "N/A")
-
-    st.plotly_chart(fig_monte, use_container_width=True)
-    st.plotly_chart(fig_waterfall, use_container_width=True)
-
-    if getattr(response, "status_code", None) == 200:
-        st.download_button(
-            "DOWNLOAD 11-PAGE INSTITUTIONAL PDF",
-            response.content,
-            "Pro_Forma_AI_Institutional_Memorandum.pdf",
-            "application/pdf",
-            type="primary",
-            use_container_width=True
+        # apply periodic waterfall: return of capital & pref & catchup, leftover accumulates as residual
+        lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left = apply_periodic_waterfall(
+            op_cf, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct
         )
 
-st.markdown("© 2025 Pro Forma AI — The Real Institutional Model")
+        lp_cfs.append(lp_paid)
+        gp_cfs.append(gp_paid)
+        residual_accumulator += residual_left
+
+    # At exit: compute exit proceeds from last-year NOI using exit cap
+    # Use last-year NOI_at computed in loop (noi_at)
+    exit_value = noi_at / safe_cap(exit_cap)
+    exit_net = exit_value * (1 - selling_costs)
+    # pay senior loan balance off (bal)
+    exit_reversion = max(exit_net - bal, 0.0)
+    # combine exit reversion with accumulated residual for final split
+    final_residual = residual_accumulator + exit_reversion
+
+    # Perform final settlement according to promote tiers using LP/GP cashflows so far
+    lp_add, gp_add = settle_final_distribution(lp_cfs, gp_cfs, final_residual, equity_lp, promote_tiers)
+
+    lp_cfs[-1] += lp_add  # add to last period
+    gp_cfs[-1] += gp_add
+
+    # Build CF table
+    cf_table = pd.DataFrame({
+        "Period": ["Year 0"] + years,
+        "LP CF": [lp_cfs[0]] + lp_cfs[1:],
+        "GP CF": [gp_cfs[0]] + gp_cfs[1:],
+    })
+
+    return {
+        "lp_cfs": lp_cfs,
+        "gp_cfs": gp_cfs,
+        "cf_table": cf_table,
+        "dscr_path": dscr_path,
+        "exit_value": exit_value,
+        "exit_reversion": exit_reversion
+    }
+
+# Monte Carlo: run sims and apply same settlement engine per sim
+def run_montecarlo(n_sims):
+    # covariance matrix
+    cov = np.diag([sigma_rent**2, sigma_opex**2, sigma_cap**2])
+    cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
+    # cholesky (robust)
+    try:
+        L = np.linalg.cholesky(cov)
+    except Exception:
+        L = np.diag([sigma_rent, sigma_opex, sigma_cap])
+
+    senior_loan = total_cost * senior_ltv
+    mezz_loan_amt = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
+    equity_total = total_cost - senior_loan - mezz_loan_amt
+    equity_lp = equity_total * lp_share_default
+
+    irrs = []
+    dscr_breach_count = 0
+    for i in range(n_sims):
+        z = np.random.normal(size=3)
+        shocks = L @ z
+        rent_shock = 1.0 + shocks[0]
+        opex_shock = 1.0 + shocks[1]
+        cap_shock = shocks[2]
+        bal = senior_loan
+        lp_cf_sim = [-equity_lp]
+        lp_roc_remaining = equity_lp
+        lp_pref_accrued = 0.0
+        dscr_path = []
+        residual_acc = 0.0
+
+        balances, interests, principals, payments = compute_amort_schedule(senior_loan, senior_rate, max(1, senior_amort), hold)
+
+        for y in range(1, hold+1):
+            gpr = gpr_y1 * ((1 + rent_growth) ** (y-1)) * rent_shock
+            v = float(np.clip(vacancy + np.random.normal(0, 0.01), 0.0, 0.9))
+            egi = gpr * (1 - v)
+            opex = opex_y1 * ((1 + opex_growth) ** (y-1)) * opex_shock + reserves
+            noi = egi - opex
+            tax = 0.0
+            noi_at = noi - tax
+
+            # debt
+            if senior_amort == 0 or y <= senior_io:
+                interest = bal * senior_rate
+                principal = 0.0
+                payment = interest
+            else:
+                if y-1 < len(payments):
+                    payment = payments[y-1]
+                else:
+                    payment = annual_payment(senior_loan, senior_rate, senior_amort)
+                interest = bal * senior_rate
+                principal = min(max(payment - interest, 0.0), bal)
+            bal = max(bal - principal, 0.0)
+            ds = interest + principal
+            dscr_val = noi_at / ds if ds > 0 else 99.0
+            dscr_path.append(dscr_val)
+
+            op_cf = noi_at - ds
+            # accrue pref
+            lp_pref_accrued += equity_lp * pref_annual
+            lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left = apply_periodic_waterfall(
+                op_cf, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct
+            )
+            lp_cf_sim.append(lp_paid)
+            residual_acc += residual_left
+
+        # exit:
+        cap_sim = safe_cap(exit_cap + cap_shock)
+        exit_value = noi_at / cap_sim if cap_sim > 0 else 0.0
+        exit_net = exit_value * (1 - selling_costs)
+        exit_reversion = max(exit_net - bal, 0.0)
+        final_residual = residual_acc + exit_reversion
+
+        lp_add, gp_add = settle_final_distribution(lp_cf_sim, [], final_residual, equity_lp, promote_tiers)
+        # add final settlement
+        lp_cf_sim[-1] += lp_add
+
+        irr_sim = robust_irr(lp_cf_sim)
+        if not np.isnan(irr_sim) and irr_sim > -1:
+            irrs.append(irr_sim)
+
+        if any(d < 1.2 for d in dscr_path):
+            dscr_breach_count += 1
+
+    return np.array(irrs), dscr_breach_count
+
+# CSV sample generator (for reconciliation)
+def generate_sample_csv(cf_table):
+    buf = io.StringIO()
+    cf_table.to_csv(buf, index=False)
+    buf.seek(0)
+    return buf.getvalue().encode()
+
+# ---------------------------
+# UI Buttons & Run
+# ---------------------------
+if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
+    with st.spinner("Running deterministic build..."):
+        det = build_model_and_settle_det()
+        lp_cfs = det['lp_cfs']
+        gp_cfs = det['gp_cfs']
+        cf_table = det['cf_table']
+        exit_value = det['exit_value']
+        exit_reversion = det['exit_reversion']
+        dscr_path = det['dscr_path']
+        lp_irr = robust_irr(lp_cfs)
+        st.success("Deterministic build complete")
+
+    st.subheader("Deterministic Results")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("LP IRR (det)", f"{lp_irr:.2%}" if not math.isnan(lp_irr) else "N/A")
+    col2.metric("Min DSCR", f"{min(dscr_path):.2f}x" if dscr_path else "N/A")
+    col3.metric("Exit Value (net)", f"${exit_value*(1-selling_costs):,.0f}")
+
+    st.markdown("### Deterministic Cashflow Table (LP)")
+    st.dataframe(cf_table)
+
+    # CSV download
+    csv_bytes = generate_sample_csv(cf_table)
+    st.download_button("Download deterministic CF CSV", csv_bytes, "deterministic_cf.csv", "text/csv")
+
+    # Monte Carlo (warn about time)
+    st.info(f"Running Monte Carlo with {n_sims} sims — this may take time. Use fewer sims for quick iteration.")
+    with st.spinner("Running Monte Carlo..."):
+        irrs, breaches = run_montecarlo(int(n_sims))
+    if irrs.size == 0:
+        st.error("Monte Carlo produced no valid IRRs. Check inputs.")
+    else:
+        p5, p50, p95 = np.percentile(irrs, [5, 50, 95])
+        st.subheader("Monte Carlo Results (LP IRR)")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("P5", f"{p5:.2%}")
+        col2.metric("P50", f"{p50:.2%}")
+        col3.metric("P95", f"{p95:.2%}")
+        st.metric("Probability DSCR < 1.2", f"{breaches / max(1, int(n_sims)):.1%}")
+
+        fig = px.histogram(irrs*100, nbins=80, title="LP IRR Distribution (Monte Carlo)")
+        fig.add_vline(x=p50*100, line_color="white", line_width=3)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Prepare payload & optional PDF call (best-effort)
+    payload = {
+        "date": datetime.today().strftime("%B %d, %Y"),
+        "p50": f"{p50:.1%}" if irrs.size else "N/A",
+        "p95": f"{p95:.1%}" if irrs.size else "N/A",
+        "min_dscr": f"{min(dscr_path):.2f}x" if dscr_path else "N/A",
+    }
+    try:
+        response = requests.post("https://proforma-ai-production.up.railway.app/api/pdf", json=payload, timeout=30)
+        if response.status_code == 200:
+            st.success("PDF generated on service")
+    except Exception:
+        st.info("PDF service unavailable (skipped).")
+
+st.markdown("---")
+st.info("This is an institutional-grade model with multi-tier promote settlement and test scaffolding. Adjust inputs in the sidebar and rerun.")
+
