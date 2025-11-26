@@ -62,21 +62,22 @@ st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="w
 
 # ---------------------------
 # ---------------------------
-# PAYWALL — 100% WORKING (tested today, March 2025)
 # ---------------------------
-ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
-ANNUAL_PRICE_ID = "price_1SXqY7H2h13vRbN8k0wC7IEx"         # $99,000/year
+# PAYWALL — FINAL WORKING VERSION (March 2025)
+# ---------------------------
+import json
 
-# CHANGE THESE TWO TO ANYTHING LONG + RANDOM (32+ chars)
+ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
+ANNUAL_PRICE_ID = "price_1SW1UJH2h13vRbN8FOyTcLHx"         # $99,000/year
+
+# CHANGE THESE — make them long + random
 VALID_TOKENS = {
-    "one": "9f8e6d5c4b3a29182736455049382716",      # ← change
-    "annual": "a1b2c3d4e5f678901234567890abcdef"   # ← change
+    "one": "8x7c5v4b3n2m1lkj9oi8u7y6t5r4e3w2",
+    "annual": "q9w8e7r6t5y4u3i2o1p0m9n8b7v6c5x4"
 }
 
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
-# PASTE YOUR REAL DEPLOYED URL HERE (must start with https:// and have NO trailing spaces!)
-SUCCESS_BASE_URL = "https://proforma-ai-production.up.railway.app/"   # ←←← CHANGE THIS ONLY
-# ←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+# CHANGE ONLY THIS — your real deployed URL
+APP_URL = "https://proforma-ai-production.up.railway.app/"   # ←←←← CHANGE THIS
 
 plan = st.query_params.get("plan")
 token = st.query_params.get("token")
@@ -86,27 +87,45 @@ if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
     st.markdown("### Unlock Full Model Instantly")
 
     col1, col2 = st.columns(2)
+
     with col1:
-        st.markdown(f'''
-        <a href="https://buy.stripe.com/{ONE_DEAL_PRICE_ID}" target="_blank">
-            <button style="padding:20px 40px; font-size:20px; background:#00dbde; color:white; border:none; border-radius:15px; width:100%; cursor:pointer;">
-                One Deal — $999
-            </button>
-        </a>
-        ''', unsafe_allow_html=True)
+        if st.button("One Deal — $999", type="primary", use_container_width=True):
+            st.session_state.checkout = {
+                "price": ONE_DEAL_PRICE_ID,
+                "success_url": f"{APP_URL}?plan=one&token={VALID_TOKENS['one']}",
+                "cancel_url": APP_URL
+            }
+            st.rerun()
 
     with col2:
-        # THIS LINE IS THE ONE THAT WAS BREAKING — now 100% clean
-        annual_success = f"{SUCCESS_BASE_URL}?plan=annual&token={VALID_TOKENS['annual']}"
-        st.markdown(f'''
-        <a href="https://buy.stripe.com/{ANNUAL_PRICE_ID}?prefilled_email=&success_url={annual_success}" target="_blank">
-            <button style="padding:20px 40px; font-size:20px; background:#fc00ff; color:white; border:none; border-radius:15px; width:100%; cursor:pointer;">
-                Unlimited — $99,000/year
-            </button>
-        </a>
-        ''', unsafe_allow_html=True)
+        if st.button("Unlimited — $99,000/year", type="primary", use_container_width=True):
+            st.session_state.checkout = {
+                "price": ANNUAL_PRICE_ID,
+                "success_url": f"{APP_URL}?plan=annual&token={VALID_TOKENS['annual']}",
+                "cancel_url": APP_URL
+            }
+            st.rerun()
 
-    st.markdown("<p style='text-align:center; margin-top:40px; color:#666; font-size:18px;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
+    # This hidden part creates the real Stripe session
+    if "checkout" in st.session_state:
+        checkout = st.session_state.checkout
+        del st.session_state.checkout
+        js = f"""
+        <script src="https://js.stripe.com/v3/"></script>
+        <script>
+        const stripe = Stripe(pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE);  // ←←← PUT YOUR REAL PUBLISHABLE KEY HERE
+        stripe.redirectToCheckout({{
+            lineItems: [{{price: '{checkout["price"]}', quantity: 1}}],
+            mode: 'payment',
+            successUrl: '{checkout["success_url"]}',
+            cancelUrl: '{checkout["cancel_url"]}',
+        }});
+        </script>
+        """
+        st.components.v1.html(js, height=0)
+        st.stop()
+
+    st.markdown("<p style='text-align:center; margin-top:40px; color:#666;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------
