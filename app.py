@@ -2,7 +2,6 @@
 # Run: streamlit run app.py
 import streamlit as st
 import numpy as np
-
 # === FIXED: Safe numpy_financial (works on Streamlit Cloud too) ===
 try:
     import numpy_financial as npf
@@ -31,7 +30,6 @@ except ImportError:
                 r -= f / df
             return r if abs(npv(r)) < 1e6 else None
         npf = type('npf', (), {'pmt': pmt, 'irr': irr})()
-
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -43,7 +41,6 @@ import io
 import csv
 from io import BytesIO
 import textwrap
-
 # Optional PDF/image libs
 try:
     from reportlab.pdfgen import canvas
@@ -55,38 +52,59 @@ try:
     REPORTLAB_AVAILABLE = True
 except Exception:
     REPORTLAB_AVAILABLE = False
-
 # Plotly to image (kaleido)
 KALEIDO_AVAILABLE = True
 try:
     import kaleido  # noqa: F401
 except Exception:
     KALEIDO_AVAILABLE = False
-
 st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="wide")
 
 # ---------------------------
-# APP CONFIG / PAYWALL (simple)
+# APP CONFIG / PAYWALL — FULLY FIXED (no st._get_host_url, works everywhere)
 # ---------------------------
 ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
 ANNUAL_PRICE_ID = "price_1SW1UJH2h13vRbN8FOyTcLHx"         # $99,000/year
 
-VALID_TOKENS = {"one": "one-token-hex", "annual": "annual-token-hex"}  # replace with your real ones
+# CHANGE THESE TO YOUR OWN STRONG RANDOM TOKENS (keep them secret!)
+VALID_TOKENS = {
+    "one": "x7k9p2m4v8q1r5t3y6u0w9e2z4c6b8n0a1s2d3",
+    "annual": "h4j6k8m1p3q5r7t9v2x4y6z8c1d3f5g7h9j1"
+}
 
-# FIXED: modern query params
+# REPLACE THIS WITH YOUR ACTUAL DEPLOYED URL (Streamlit or custom domain)
+# Example: https://mycompany-proforma-ai.streamlit.app
+# Example: https://proforma.yourcompany.com
+SUCCESS_BASE_URL = "https://proforma-ai-production.up.railway.app/"   # <<< CHANGE THIS <<<
+
 plan = st.query_params.get("plan")
 token = st.query_params.get("token")
 
 if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
-    st.title("Pro Forma AI — Paywall")
-    st.markdown("### Unlock Full Institutional Model")
+    st.title("Pro Forma AI — Institutional Access Required")
+    st.markdown("### Unlock Full Institutional Model Instantly")
+
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown(f'<a href="https://buy.stripe.com/{ONE_DEAL_PRICE_ID}" target="_blank"><button style="padding:20px 40px; font-size:20px; background:#00dbde; color:white; border:none; border-radius:15px;">One Deal — $999</button></a>', unsafe_allow_html=True)
+        st.markdown(f'''
+        <a href="https://buy.stripe.com/{ONE_DEAL_PRICE_ID}" target="_blank">
+            <button style="padding:20px 40px; font-size:20px; background:#00dbde; color:white; border:none; border-radius:15px; width:100%; cursor:pointer;">
+                One Deal — $999
+            </button>
+        </a>
+        ''', unsafe_allow_html=True)
+
     with col2:
-        success_url = f"{st._get_host_url()}?plan=annual&token={VALID_TOKENS['annual']}"
-        st.markdown(f'<a href="https://buy.stripe.com/{ANNUAL_PRICE_ID}?success_url={success_url}" target="_blank"><button style="padding:20px 40px; font-size:20px; background:#fc00ff; color:white; border:none; border-radius:15px;">Unlimited — $99,000/year</button></a>', unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; margin-top:30px;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
+        annual_success = f"{SUCCESS_BASE_URL}?plan=annual&token={VALID_TOKENS['annual']}"
+        st.markdown(f'''
+        <a href="https://buy.stripe.com/{ANNUAL_PRICE_ID}?prefilled_email=&success_url={annual_success}" target="_blank">
+            <button style="padding:20px 40px; font-size:20px; background:#fc00ff; color:white; border:none; border-radius:15px; width:100%; cursor:pointer;">
+                Unlimited — $99,000/year
+            </button>
+        </a>
+        ''', unsafe_allow_html=True)
+
+    st.markdown("<p style='text-align:center; margin-top:40px; color:#666; font-size:18px;'>Payment → Instant Auto-Unlock (you’ll be redirected back here)</p>", unsafe_allow_html=True)
     st.stop()
 
 st.title("Pro Forma AI — Institutional (Full)")
@@ -194,15 +212,12 @@ def robust_irr(cfs):
                 low = mid
                 f_low = f_mid
         return (low + high) / 2
-
 def annual_payment(loan, rate, amort_years):
     if amort_years == 0:
         return loan * rate
     return float(-npf.pmt(rate, amort_years, loan))
-
 def safe_cap(rate):
     return min(max(rate, 0.03), 0.30)
-
 def compute_amort_schedule(loan, rate, amort_years, years):
     """Return arrays for balances, interest, principal, payment for 'years' periods (annualized)."""
     balances = []
@@ -226,7 +241,6 @@ def compute_amort_schedule(loan, rate, amort_years, years):
         balances.append(bal)
         bal = max(bal - principal, 0.0)
     return balances, interests, principals, payments
-
 # ---------------------------
 # Institutional waterfall settlement (improved)
 # ---------------------------
@@ -272,7 +286,6 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
         lp_add_total += residual_left * 0.8
         gp_add_total += residual_left * 0.2
     return lp_add_total, gp_add_total
-
 def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct):
     lp_paid = 0.0
     gp_paid = 0.0
@@ -293,7 +306,6 @@ def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, e
         rem -= gp_catch
     residual_left = rem
     return lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left
-
 def build_model_and_settle_det():
     senior_loan = total_cost * senior_ltv
     mezz_loan = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
@@ -360,7 +372,6 @@ def build_model_and_settle_det():
         "exit_value": exit_value,
         "exit_reversion": exit_reversion
     }
-
 def run_montecarlo(n_sims):
     cov = np.diag([sigma_rent**2, sigma_opex**2, sigma_cap**2])
     cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
@@ -434,19 +445,16 @@ def run_montecarlo(n_sims):
         if any(d < 1.2 for d in dscr_vals):
             dscr_breach_count += 1
     return np.array(lp_irrs), dscr_breach_count
-
 def generate_sample_csv(cf_table):
     buf = io.StringIO()
     cf_table.to_csv(buf, index=False)
     buf.seek(0)
     return buf.getvalue().encode()
-
 def figure_to_png_bytes(fig):
     try:
         return fig.to_image(format="png")
     except Exception:
         return None
-
 def fetch_logo_image(logo_file, logo_url):
     if logo_file is not None:
         try:
@@ -462,14 +470,12 @@ def fetch_logo_image(logo_file, logo_url):
         except Exception:
             return None
     return None
-
 def split_dataframe_for_table(df, max_rows=30):
     parts = []
     n = len(df)
     for i in range(0, n, max_rows):
         parts.append(df.iloc[i:i+max_rows])
     return parts
-
 def add_header_footer(c, logo_blob_tuple):
     width, height = letter
     c.setFont("Helvetica", 8)
@@ -484,7 +490,6 @@ def add_header_footer(c, logo_blob_tuple):
             c.drawImage(img, width - 140, height - 70, width=80, height=30, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
-
 def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     if not REPORTLAB_AVAILABLE:
         text = "ReportLab not available. Install reportlab to generate full PDF memo."
@@ -610,7 +615,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
               onLaterPages=lambda c, d: add_header_footer(c, logo_blob_tuple))
     buf.seek(0)
     return buf.getvalue(), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.pdf"
-
 def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     try:
         pdf_bytes, filename = generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
@@ -643,7 +647,6 @@ def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tu
                 f"P50 (MC): {monte_stats.get('p50', 'N/A')}\n"
                 f"P95 (MC): {monte_stats.get('p95', 'N/A')}\n")
         return text.encode("utf-8"), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.txt"
-
 if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
     with st.spinner("Running deterministic build..."):
         det = build_model_and_settle_det()
@@ -735,6 +738,5 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         requests.post("https://proforma-ai-production.up.railway.app/api/pdf", json=payload, timeout=8)
     except Exception:
         pass
-
 st.markdown("---")
 st.info("This is an institutional-grade model with multi-tier promote settlement, Monte Carlo analysis, and automated multi-page PDF reporting (with logo/header/footer). Adjust inputs and rerun.")
