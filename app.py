@@ -58,21 +58,19 @@ try:
     import kaleido  # noqa: F401
 except Exception:
     KALEIDO_AVAILABLE = False
+
 st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="wide")
 
 # --- SESSION STATE INITIALIZATION ---
 if "pending_checkout" not in st.session_state:
-    st.session_state.pending_checkout = False
-
-if "checkout_url" not in st.session_state:
-    st.session_state.checkout_url = ""
+    st.session_state.pending_checkout = None  # will hold dict when user clicks a payment option
 
 # ---------------------------
 # ---------------------------
 # PAYWALL — FINAL 100% WORKING VERSION (Tested Nov 2025)
 # ---------------------------
-ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
-ANNUAL_PRICE_ID = "price_1SXqY7H2h13vRbN8k0wC7IEx"         # $99,000/year
+ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # example — replace with your real Price ID
+ANNUAL_PRICE_ID = "price_1SXqY7H2h13vRbN8k0wC7IEx"         # example — replace with your real Price ID
 
 # CHANGE THESE — make them random & long
 VALID_TOKENS = {
@@ -82,6 +80,10 @@ VALID_TOKENS = {
 
 # ←←←←← CHANGE THIS — YOUR REAL DEPLOYED URL (copy from browser)
 APP_URL = "https://proforma-ai-production.up.railway.app/"   # ←←←←← CHANGE
+
+# ---------- IMPORTANT: STRIPE PUBLISHABLE KEY ----------
+# Put your Stripe publishable key here (pk_test_... or pk_live_...). Do NOT put your secret key in client-side code.
+STRIPE_PK = "pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE"
 
 # ---------------------------
 # PAYWALL — FIXED QUERY PARAMS + RELIABLE UNLOCK
@@ -106,7 +108,7 @@ if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
                 "success_url": f"{APP_URL}?plan=one&token={VALID_TOKENS['one']}",
                 "cancel_url": APP_URL
             }
-            st.rerun()
+            st.experimental_rerun()
 
     with col2:
         if st.button("Unlimited — $99,000/year", type="primary", use_container_width=True, key="annual"):
@@ -115,49 +117,42 @@ if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
                 "success_url": f"{APP_URL}?plan=annual&token={VALID_TOKENS['annual']}",
                 "cancel_url": APP_URL
             }
-            st.rerun()
+            st.experimental_rerun()
 
-    # HANDLE STRIPE CHECKOUT REDIRECT
-# --- STRIPE CHECKOUT HANDLER ---
-if "pending_checkout" not in st.session_state:
-    st.session_state.pending_checkout = False
-
-if st.session_state.pending_checkout:
-    # Inject JS safely
-    js = """
-    <script>
-        window.open('%s', '_blank');
-    </script>
-    """ % st.session_state.checkout_url
-
-    st.markdown(js, unsafe_allow_html=True)
-    st.session_state.pending_checkout = False
-
-
-# --- PAYWALL BUTTON ---
-if st.button("Unlock Full Model ($49)"):
-    import stripe
-    stripe.api_key = STRIPE_SECRET_KEY
-
-    session = stripe.checkout.Session.create(
-        payment_method_types=["card"],
-        mode="payment",
-        line_items=[{
-            "price_data": {
-                "currency": "usd",
-                "product_data": {"name": "Pro Forma AI – Full Access"},
-                "unit_amount": 4900,
-            },
-            "quantity": 1,
-        }],
-        success_url="https://yourdomain.com/success",
-        cancel_url="https://yourdomain.com/cancel",
-    )
-
-    st.session_state.checkout_url = session.url
-    st.session_state.pending_checkout = True
-
-    st.success("Redirecting to secure checkout…")
+    # If pending_checkout exists, create a small HTML component that immediately calls Stripe Checkout (client-side).
+    # This avoids needing the stripe python package, works in Streamlit, and prevents server-side secret exposure.
+    if st.session_state.pending_checkout:
+        checkout = st.session_state.pending_checkout
+        # Build JS that uses Stripe JS to redirect to Checkout
+        js = f"""
+        <script src="https://js.stripe.com/v3/"></script>
+        <script>
+        (function() {{
+            var stripe = Stripe("{STRIPE_PK}");
+            stripe.redirectToCheckout({{
+                lineItems: [{{ price: "{checkout['price']}", quantity: 1 }}],
+                mode: 'payment',
+                successUrl: "{checkout['success_url']}",
+                cancelUrl: "{checkout['cancel_url']}"
+            }}).then(function(result) {{
+                if (result.error) {{
+                    // show error to the user
+                    var el = document.createElement('div');
+                    el.style.padding = '12px';
+                    el.style.background = '#fee';
+                    el.style.border = '1px solid #f99';
+                    el.innerText = result.error.message || 'Stripe checkout error';
+                    document.body.appendChild(el);
+                }}
+            }});
+        }})();
+        </script>
+        """
+        # height must be > 0 otherwise some browsers/Streamlit block the iframe/JS execution
+        st.components.v1.html(js, height=200)
+        # clear pending_checkout so UI doesn't re-show it on rerun
+        st.session_state.pending_checkout = None
+        st.stop()  # stop executing rest of the app for the paywall view
 
 # ---------------------------
 # SIDEBAR INPUTS (including logo input)
@@ -262,12 +257,15 @@ def robust_irr(cfs):
                 low = mid
                 f_low = f_mid
         return (low + high) / 2
+
 def annual_payment(loan, rate, amort_years):
     if amort_years == 0:
         return loan * rate
     return float(-npf.pmt(rate, amort_years, loan))
+
 def safe_cap(rate):
     return min(max(rate, 0.03), 0.30)
+
 def compute_amort_schedule(loan, rate, amort_years, years):
     """Return arrays for balances, interest, principal, payment for 'years' periods (annualized)."""
     balances = []
@@ -291,6 +289,7 @@ def compute_amort_schedule(loan, rate, amort_years, years):
         balances.append(bal)
         bal = max(bal - principal, 0.0)
     return balances, interests, principals, payments
+
 # ---------------------------
 # Institutional waterfall settlement (improved)
 # ---------------------------
@@ -336,6 +335,7 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
         lp_add_total += residual_left * 0.8
         gp_add_total += residual_left * 0.2
     return lp_add_total, gp_add_total
+
 def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct):
     lp_paid = 0.0
     gp_paid = 0.0
@@ -356,6 +356,7 @@ def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, e
         rem -= gp_catch
     residual_left = rem
     return lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left
+
 def build_model_and_settle_det():
     senior_loan = total_cost * senior_ltv
     mezz_loan = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
@@ -422,6 +423,7 @@ def build_model_and_settle_det():
         "exit_value": exit_value,
         "exit_reversion": exit_reversion
     }
+
 def run_montecarlo(n_sims):
     cov = np.diag([sigma_rent**2, sigma_opex**2, sigma_cap**2])
     cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
@@ -495,16 +497,19 @@ def run_montecarlo(n_sims):
         if any(d < 1.2 for d in dscr_vals):
             dscr_breach_count += 1
     return np.array(lp_irrs), dscr_breach_count
+
 def generate_sample_csv(cf_table):
     buf = io.StringIO()
     cf_table.to_csv(buf, index=False)
     buf.seek(0)
     return buf.getvalue().encode()
+
 def figure_to_png_bytes(fig):
     try:
         return fig.to_image(format="png")
     except Exception:
         return None
+
 def fetch_logo_image(logo_file, logo_url):
     if logo_file is not None:
         try:
@@ -520,12 +525,14 @@ def fetch_logo_image(logo_file, logo_url):
         except Exception:
             return None
     return None
+
 def split_dataframe_for_table(df, max_rows=30):
     parts = []
     n = len(df)
     for i in range(0, n, max_rows):
         parts.append(df.iloc[i:i+max_rows])
     return parts
+
 def add_header_footer(c, logo_blob_tuple):
     width, height = letter
     c.setFont("Helvetica", 8)
@@ -540,6 +547,7 @@ def add_header_footer(c, logo_blob_tuple):
             c.drawImage(img, width - 140, height - 70, width=80, height=30, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
+
 def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     if not REPORTLAB_AVAILABLE:
         text = "ReportLab not available. Install reportlab to generate full PDF memo."
@@ -577,20 +585,8 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     for b in bullets:
         story.append(Paragraph(f"• {b}", normal))
     story.append(Spacer(1, 12))
-    story.append(PageBreak())
-    story.append(Paragraph("Key Assumptions", styles['Heading2']))
-    asum_lines = [
-        f"GPR Year 1: ${gpr_y1:,.0f}",
-        f"Rent Growth (annual): {rent_growth:.2%}",
-        f"Vacancy: {vacancy:.2%}",
-        f"OpEx Year1: ${opex_y1:,.0f}",
-        f"OpEx growth: {opex_growth:.2%}",
-        f"Reserves/CapEx: ${reserves:,.0f}",
-        f"Senior Rate: {senior_rate:.2%} | Senior Amort: {senior_amort} yrs | IO: {senior_io} yrs",
-    ]
-    for a in asum_lines:
-        story.append(Paragraph(a, normal))
-    story.append(Spacer(1, 12))
+
+    # Deterministic cashflows table(s)
     story.append(PageBreak())
     story.append(Paragraph("Deterministic Cashflows (LP & GP)", styles['Heading2']))
     df = det['cf_table'].copy()
@@ -611,6 +607,8 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Spacer(1, 8))
         if idx < len(parts) - 1:
             story.append(PageBreak())
+
+    # Monte Carlo section
     story.append(PageBreak())
     story.append(Paragraph("Monte Carlo Analysis — LP IRR Distribution", styles['Heading2']))
     st_lines = [
@@ -621,6 +619,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     for line in st_lines:
         story.append(Paragraph(line, normal))
     story.append(Spacer(1, 12))
+
     try:
         png_hist = figure_to_png_bytes(fig_monte) if fig_monte is not None else None
         png_wf = figure_to_png_bytes(fig_waterfall) if fig_waterfall is not None else None
@@ -636,6 +635,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
             story.append(Spacer(1, 6))
     except Exception:
         pass
+
     story.append(PageBreak())
     story.append(Paragraph("Waterfall Mechanics & Promote Tiers", styles['Heading2']))
     wf_text = "Promote tiers (IRR-hurdle driven):\n"
@@ -647,6 +647,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     story.append(Paragraph(wf_text.replace("\n", "<br/>"), normal))
     story.append(Spacer(1, 12))
     story.append(PageBreak())
+
     story.append(Paragraph("Appendix: Full Inputs & Notes", styles['Heading2']))
     inputs_summary = [
         f"Purchase price: ${purchase_price:,.0f}",
@@ -665,6 +666,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
               onLaterPages=lambda c, d: add_header_footer(c, logo_blob_tuple))
     buf.seek(0)
     return buf.getvalue(), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.pdf"
+
 def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     try:
         pdf_bytes, filename = generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
@@ -697,6 +699,8 @@ def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tu
                 f"P50 (MC): {monte_stats.get('p50', 'N/A')}\n"
                 f"P95 (MC): {monte_stats.get('p95', 'N/A')}\n")
         return text.encode("utf-8"), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.txt"
+
+# Main Run button
 if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
     with st.spinner("Running deterministic build..."):
         det = build_model_and_settle_det()
@@ -708,18 +712,22 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         dscr_path = det['dscr_path']
         lp_irr = robust_irr(lp_cfs)
         st.success("Deterministic build complete")
+
     st.subheader("Deterministic Results")
     c1, c2, c3 = st.columns(3)
     c1.metric("LP IRR (det)", f"{lp_irr:.2%}" if not math.isnan(lp_irr) else "N/A")
     c2.metric("Min DSCR", f"{min(dscr_path):.2f}x" if dscr_path else "N/A")
     c3.metric("Exit Value (net)", f"${exit_value*(1-selling_costs):,.0f}")
+
     st.markdown("### Deterministic Cashflow Table (LP)")
     st.dataframe(cf_table)
     csv_bytes = generate_sample_csv(cf_table)
     st.download_button("Download deterministic CF CSV", csv_bytes, "deterministic_cf.csv", "text/csv")
+
     st.info(f"Running Monte Carlo with {n_sims} sims — this may take time.")
     with st.spinner("Running Monte Carlo..."):
         irrs, breaches = run_montecarlo(int(n_sims))
+
     if irrs.size == 0:
         st.error("Monte Carlo produced no valid IRRs. Check inputs.")
         p5 = p50 = p95 = None
@@ -733,9 +741,11 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         cc2.metric("P50", f"{p50:.2%}")
         cc3.metric("P95", f"{p95:.2%}")
         st.metric("Probability DSCR < 1.2", f"{breaches / max(1, int(n_sims)):.1%}")
+
         fig_monte = px.histogram(irrs*100, nbins=80, title="LP IRR Distribution (Monte Carlo)")
         fig_monte.add_vline(x=p50*100, line_color="white", line_width=3)
         st.plotly_chart(fig_monte, use_container_width=True)
+
         try:
             op_sum = sum([x for x in det['lp_cfs'][1:-1]]) if len(det['lp_cfs'])>2 else 0
             wf = go.Figure(go.Waterfall(
@@ -748,17 +758,20 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
             st.plotly_chart(fig_waterfall, use_container_width=True)
         except Exception:
             fig_waterfall = None
+
     monte_stats = {
         "p5": f"{p5:.1%}" if (p5 is not None) else "N/A",
         "p50": f"{p50:.1%}" if (p50 is not None) else "N/A",
         "p95": f"{p95:.1%}" if (p95 is not None) else "N/A",
     }
+
     logo_blob = None
     try:
         logo_blob = fetch_logo_image(logo_file if 'logo_file' in locals() else None,
                                      logo_url if 'logo_url' in locals() else None)
     except Exception:
         logo_blob = None
+
     with st.spinner("Generating PDF memo (multi-page) ..."):
         try:
             pdf_bytes, filename = generate_pdf_report(det, monte_stats,
@@ -774,10 +787,12 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
                             f"P50 (MC): {monte_stats.get('p50')}\n"
                             f"P95 (MC): {monte_stats.get('p95')}\n")
             st.download_button("Download Summary (TXT)", summary_text.encode(), "proforma_summary.txt", "text/plain")
+
     if 'irrs' in locals() and irrs.size > 0:
         buf = io.StringIO()
         pd.DataFrame({"LP_IRR": irrs}).to_csv(buf, index=False)
         st.download_button("Download Monte Carlo IRRs (CSV)", buf.getvalue().encode(), "mc_irrs.csv", "text/csv")
+
     try:
         payload = {
             "date": datetime.today().strftime("%B %d, %Y"),
@@ -788,5 +803,6 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         requests.post("https://proforma-ai-production.up.railway.app/api/pdf", json=payload, timeout=8)
     except Exception:
         pass
+
 st.markdown("---")
 st.info("This is an institutional-grade model with multi-tier promote settlement, Monte Carlo analysis, and automated multi-page PDF reporting (with logo/header/footer). Adjust inputs and rerun.")
