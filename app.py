@@ -31,7 +31,6 @@ except Exception:
 # Plotly to image (kaleido)
 KALeIDO_AVAILABLE = True
 try:
-    # fig.to_image uses kaleido under the hood if available
     import kaleido  # noqa: F401
 except Exception:
     KALeIDO_AVAILABLE = False
@@ -137,6 +136,7 @@ with st.sidebar:
 # Helper functions
 # ---------------------------
 def robust_irr(cfs):
+    """Robust IRR wrapper: use npf.irr + bisection fallback."""
     try:
         irr = npf.irr(cfs)
         if irr is None or np.isnan(irr) or np.isinf(irr):
@@ -176,6 +176,7 @@ def safe_cap(rate):
     return min(max(rate, 0.03), 0.30)
 
 def compute_amort_schedule(loan, rate, amort_years, years):
+    """Return arrays for balances, interest, principal, payment for 'years' periods (annualized)."""
     balances = []
     interests = []
     principals = []
@@ -198,7 +199,23 @@ def compute_amort_schedule(loan, rate, amort_years, years):
         bal = max(bal - principal, 0.0)
     return balances, interests, principals, payments
 
+# ---------------------------
+# Institutional waterfall settlement (improved)
+# ---------------------------
 def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, equity_lp, promote_tiers):
+    """
+    Improved multi-tier promote settlement.
+
+    Algorithm (pragmatic):
+      - If no promote tiers: default split 80/20 (LP/GP).
+      - For each promote tier (ascending hurdles):
+          * Find minimal X (<= residual_left) to give LP such that LP's IRR (with lp_cf_so_far + [X]) reaches the tier hurdle.
+            - If even giving LP all residual doesn't reach hurdle => give LP all and exit.
+          * Allocate X to LP (top-up).
+          * From the leftover residual after X, split according to gp_pct for that tier (GP takes gp_pct of the leftover, LP takes the rest).
+            - After splitting for that tier we finish (all residual consumed).
+      - Any leftover (should be zero) falls back to 80/20.
+    """
     if remaining_residual <= 0 or promote_tiers is None or len(promote_tiers) == 0:
         lp_share = 0.8
         return remaining_residual * lp_share, remaining_residual * (1 - lp_share)
@@ -207,18 +224,22 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
     gp_add_total = 0.0
     residual_left = remaining_residual
     lp_so_far = lp_cf_so_far.copy()
+    # Ensure lp_so_far is proper numeric list
+    lp_so_far = [float(x) for x in lp_so_far]
 
-    for i, (hurdle, gp_pct) in enumerate(promote_tiers):
+    for (hurdle, gp_pct) in promote_tiers:
         if residual_left <= 0:
             break
-        lp_candidate_full = lp_so_far + [residual_left]
-        irr_full = robust_irr(lp_candidate_full)
+        # If giving LP entire residual reaches or exceeds hurdle, find minimal X to achieve hurdle
+        irr_full = robust_irr(lp_so_far + [residual_left])
         if not np.isnan(irr_full) and irr_full >= hurdle:
+            # binary search minimal X in [0, residual_left] s.t. irr(lp_so_far + [X]) >= hurdle
             low, high = 0.0, residual_left
-            for _ in range(60):
+            for _ in range(80):
                 mid = (low + high) / 2.0
                 irr_mid = robust_irr(lp_so_far + [mid])
                 if np.isnan(irr_mid):
+                    # push low up to avoid stuck
                     low = mid
                     continue
                 if irr_mid >= hurdle:
@@ -226,8 +247,10 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
                 else:
                     low = mid
             X = high
+            # allocate X to LP
             lp_add_total += X
             residual_left -= X
+            # now split remaining residual_left per gp_pct for this tier (GP takes gp_pct of leftover)
             gp_take = residual_left * gp_pct
             lp_take = residual_left - gp_take
             lp_add_total += lp_take
@@ -235,42 +258,64 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
             residual_left = 0.0
             break
         else:
+            # even giving LP all residual won't reach hurdle — give LP everything
             lp_add_total += residual_left
             residual_left = 0.0
             break
 
+    # fallback split if anything left (unlikely)
     if residual_left > 0:
         lp_add_total += residual_left * 0.8
         gp_add_total += residual_left * 0.2
 
     return lp_add_total, gp_add_total
 
+# ---------------------------
+# Periodic waterfall (ROC -> PREF -> catchup -> residual)
+# ---------------------------
 def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct):
+    """
+    Apply ROC then pref then catch-up for a single period.
+    Returns: lp_paid, gp_paid, updated_lp_roc_remaining, updated_lp_pref_accrued, residual_left
+    """
     lp_paid = 0.0
     gp_paid = 0.0
     rem = distributable
 
+    # 1) Return of capital (LP first)
     if lp_roc_remaining > 0 and rem > 0:
         pay = min(lp_roc_remaining, rem)
         lp_paid += pay
         lp_roc_remaining -= pay
         rem -= pay
 
+    # 2) Pay accrued pref (LP)
     if lp_pref_accrued > 0 and rem > 0:
         pay = min(lp_pref_accrued, rem)
         lp_paid += pay
         lp_pref_accrued -= pay
         rem -= pay
 
+    # 3) Catch-up to GP (simplified: give GP catchup_pct of what's left this period)
     if catchup_pct > 0 and rem > 0:
         gp_catch = rem * catchup_pct
         gp_paid += gp_catch
         rem -= gp_catch
 
+    # leftover rem is residual to accumulate for final settlement
     residual_left = rem
     return lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left
 
+# ---------------------------
+# Deterministic model builder
+# ---------------------------
 def build_model_and_settle_det():
+    """
+    Build deterministic period-level cashflows (LP & GP) across hold years,
+    accumulate residuals, compute exit and perform multi-tier promote settlement.
+    Returns dict with lp_cfs, gp_cfs, cf_table, dscr_path, exit_value, exit_reversion
+    """
+    # Capital stack
     senior_loan = total_cost * senior_ltv
     mezz_loan = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
     equity_total = total_cost - senior_loan - mezz_loan
@@ -278,6 +323,7 @@ def build_model_and_settle_det():
     equity_gp = equity_total - equity_lp
 
     years = []
+    # initial cashflows (Year 0)
     lp_cfs = [ -equity_lp ]
     gp_cfs = [ -equity_gp ]
     dscr_path = []
@@ -286,6 +332,7 @@ def build_model_and_settle_det():
     lp_pref_accrued = 0.0
     residual_accumulator = 0.0
 
+    # amort schedule
     balances, interests, principals, payments = compute_amort_schedule(senior_loan, senior_rate, max(1, senior_amort), hold)
 
     for y in range(1, hold+1):
@@ -297,6 +344,7 @@ def build_model_and_settle_det():
         tax = 0.0
         noi_at = noi - tax
 
+        # debt service: interest + principal (account for IO)
         if senior_amort == 0 or y <= senior_io:
             interest = bal * senior_rate
             principal = 0.0
@@ -315,8 +363,10 @@ def build_model_and_settle_det():
 
         op_cf = noi_at - ds
 
+        # accrue pref for the period (accrual on LP invested amount)
         lp_pref_accrued += equity_lp * pref_annual
 
+        # apply periodic waterfall for cash available
         lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left = apply_periodic_waterfall(
             op_cf, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct
         )
@@ -325,16 +375,21 @@ def build_model_and_settle_det():
         gp_cfs.append(gp_paid)
         residual_accumulator += residual_left
 
+    # Exit proceeds from last-year NOI and cap
     exit_value = noi_at / safe_cap(exit_cap)
     exit_net = exit_value * (1 - selling_costs)
     exit_reversion = max(exit_net - bal, 0.0)
+
     final_residual = residual_accumulator + exit_reversion
 
+    # Perform final multi-tier settlement
     lp_add, gp_add = settle_final_distribution(lp_cfs, gp_cfs, final_residual, equity_lp, promote_tiers)
 
+    # Append final settlement to last period (add to last year's LP/GP cash)
     lp_cfs[-1] += lp_add
     gp_cfs[-1] += gp_add
 
+    # build table
     cf_table = pd.DataFrame({
         "Period": ["Year 0"] + years,
         "LP CF": [lp_cfs[0]] + lp_cfs[1:],
@@ -350,7 +405,18 @@ def build_model_and_settle_det():
         "exit_reversion": exit_reversion
     }
 
+# ---------------------------
+# Monte Carlo: run full waterfall each sim
+# ---------------------------
 def run_montecarlo(n_sims):
+    """
+    For each sim:
+      - draw shocks (rent, opex, cap)
+      - run per-year waterfall identical to deterministic flow (ROC->pref->catchup->accumulate)
+      - compute exit proceeds per sim and perform promote settlement
+      - record LP IRR (and GP IRR optionally)
+    Returns: numpy array of LP IRRs, dscr_breach_count
+    """
     cov = np.diag([sigma_rent**2, sigma_opex**2, sigma_cap**2])
     cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
     try:
@@ -362,22 +428,29 @@ def run_montecarlo(n_sims):
     mezz_loan_amt = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
     equity_total = total_cost - senior_loan - mezz_loan_amt
     equity_lp = equity_total * lp_share_default
+    equity_gp = equity_total - equity_lp
 
-    irrs = []
+    lp_irrs = []
     dscr_breach_count = 0
-    for i in range(n_sims):
+
+    for i in range(int(n_sims)):
+        # scenario shocks
         z = np.random.normal(size=3)
         shocks = L @ z
         rent_shock = 1.0 + shocks[0]
         opex_shock = 1.0 + shocks[1]
         cap_shock = shocks[2]
+
+        # per-sim balances
         bal = senior_loan
         lp_cf_sim = [-equity_lp]
+        gp_cf_sim = [-equity_gp]
         lp_roc_remaining = equity_lp
         lp_pref_accrued = 0.0
-        dscr_path = []
         residual_acc = 0.0
+        dscr_vals = []
 
+        # amort schedule for scenario (same amortization schedule)
         balances, interests, principals, payments = compute_amort_schedule(senior_loan, senior_rate, max(1, senior_amort), hold)
 
         for y in range(1, hold+1):
@@ -389,6 +462,7 @@ def run_montecarlo(n_sims):
             tax = 0.0
             noi_at = noi - tax
 
+            # debt service
             if senior_amort == 0 or y <= senior_io:
                 interest = bal * senior_rate
                 principal = 0.0
@@ -403,34 +477,50 @@ def run_montecarlo(n_sims):
             bal = max(bal - principal, 0.0)
             ds = interest + principal
             dscr_val = noi_at / ds if ds > 0 else 99.0
-            dscr_path.append(dscr_val)
+            dscr_vals.append(dscr_val)
 
             op_cf = noi_at - ds
+
+            # accrue pref this period (accrue before paying)
             lp_pref_accrued += equity_lp * pref_annual
+
+            # apply per-period waterfall
             lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left = apply_periodic_waterfall(
                 op_cf, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct
             )
+
             lp_cf_sim.append(lp_paid)
+            gp_cf_sim.append(gp_paid)
             residual_acc += residual_left
 
+        # exit per sim
         cap_sim = safe_cap(exit_cap + cap_shock)
         exit_value = noi_at / cap_sim if cap_sim > 0 else 0.0
         exit_net = exit_value * (1 - selling_costs)
         exit_reversion = max(exit_net - bal, 0.0)
         final_residual = residual_acc + exit_reversion
 
-        lp_add, gp_add = settle_final_distribution(lp_cf_sim, [], final_residual, equity_lp, promote_tiers)
-        lp_cf_sim[-1] += lp_add
+        # settle final multi-tier promote per sim (use both lp and gp cash histories)
+        lp_add, gp_add = settle_final_distribution(lp_cf_sim, gp_cf_sim, final_residual, equity_lp, promote_tiers)
 
+        # add final settlement to last year
+        lp_cf_sim[-1] += lp_add
+        gp_cf_sim[-1] += gp_add
+
+        # compute LP IRR
         irr_sim = robust_irr(lp_cf_sim)
         if not np.isnan(irr_sim) and irr_sim > -1:
-            irrs.append(irr_sim)
+            lp_irrs.append(irr_sim)
 
-        if any(d < 1.2 for d in dscr_path):
+        # dscr breach count
+        if any(d < 1.2 for d in dscr_vals):
             dscr_breach_count += 1
 
-    return np.array(irrs), dscr_breach_count
+    return np.array(lp_irrs), dscr_breach_count
 
+# ---------------------------
+# CSV sample generator (for reconciliation)
+# ---------------------------
 def generate_sample_csv(cf_table):
     buf = io.StringIO()
     cf_table.to_csv(buf, index=False)
@@ -442,13 +532,11 @@ def generate_sample_csv(cf_table):
 # ---------------------------
 def figure_to_png_bytes(fig):
     try:
-        # fig.to_image uses kaleido
         return fig.to_image(format="png")
     except Exception:
         return None
 
 def fetch_logo_image(logo_file, logo_url):
-    # return tuple (bytes, mime) or None
     if logo_file is not None:
         try:
             data = logo_file.read()
@@ -465,20 +553,29 @@ def fetch_logo_image(logo_file, logo_url):
     return None
 
 def split_dataframe_for_table(df, max_rows=30):
-    """Split dataframe into list of dataframes with <= max_rows each (for tables across pages)."""
     parts = []
     n = len(df)
     for i in range(0, n, max_rows):
         parts.append(df.iloc[i:i+max_rows])
     return parts
 
+def add_header_footer(c, logo_blob_tuple):
+    width, height = letter
+    c.setFont("Helvetica", 8)
+    c.drawString(36, height - 50, "Pro Forma AI — Institutional")
+    c.drawRightString(width - 36, height - 50, datetime.today().strftime("%B %d, %Y"))
+    page_num_text = f"Page {c.getPageNumber()}"
+    c.drawCentredString(width / 2.0, 30, page_num_text)
+    if logo_blob_tuple:
+        try:
+            logo_bytes, _ = logo_blob_tuple
+            img = ImageReader(BytesIO(logo_bytes))
+            c.drawImage(img, width - 140, height - 70, width=80, height=30, preserveAspectRatio=True, mask='auto')
+        except Exception:
+            pass
+
 def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
-    """
-    Create an 11-page-ish memo using ReportLab Platypus.
-    Returns (pdf_bytes, filename)
-    """
     if not REPORTLAB_AVAILABLE:
-        # fallback to text bytes
         text = "ReportLab not available. Install reportlab to generate full PDF memo."
         return text.encode("utf-8"), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.txt"
 
@@ -492,26 +589,11 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     heading = styles["Heading1"]
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=9, leading=11)
 
-    # Header with logo and title (page 1)
-    if logo_blob_tuple:
-        try:
-            logo_bytes, _ = logo_blob_tuple
-            img = ImageReader(BytesIO(logo_bytes))
-            story.append(Paragraph("<b>Pro Forma AI — Institutional Memorandum</b>", heading))
-            story.append(Spacer(1, 12))
-            # insert logo as small image
-            story.append(Spacer(1, 6))
-        except Exception:
-            story.append(Paragraph("<b>Pro Forma AI — Institutional Memorandum</b>", heading))
-            story.append(Spacer(1, 12))
-    else:
-        story.append(Paragraph("<b>Pro Forma AI — Institutional Memorandum</b>", heading))
-        story.append(Spacer(1, 12))
-
+    # Header + exec summary
+    story.append(Paragraph("<b>Pro Forma AI — Institutional Memorandum</b>", heading))
+    story.append(Spacer(1, 12))
     story.append(Paragraph(f"Date: {datetime.today().strftime('%B %d, %Y')}", normal))
     story.append(Spacer(1, 12))
-
-    # Executive summary (page 1)
     story.append(Paragraph("Executive Summary", styles['Heading2']))
     exec_text = textwrap.fill(
         f"This memorandum summarizes a deterministic and Monte Carlo analysis for a proposed acquisition at a purchase price of ${purchase_price:,.0f}. "
@@ -520,7 +602,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     story.append(Paragraph(exec_text, normal))
     story.append(Spacer(1, 12))
 
-    # Investment highlights (page 2)
+    # Investment highlights
     story.append(PageBreak())
     story.append(Paragraph("Investment Highlights", styles['Heading2']))
     bullets = [
@@ -535,7 +617,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Paragraph(f"• {b}", normal))
     story.append(Spacer(1, 12))
 
-    # Assumptions (page 3)
+    # Assumptions
     story.append(PageBreak())
     story.append(Paragraph("Key Assumptions", styles['Heading2']))
     asum_lines = [
@@ -551,11 +633,10 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Paragraph(a, normal))
     story.append(Spacer(1, 12))
 
-    # Deterministic CFs (pages 4-6) — table split across pages
+    # Deterministic CFs table (split)
     story.append(PageBreak())
     story.append(Paragraph("Deterministic Cashflows (LP & GP)", styles['Heading2']))
     df = det['cf_table'].copy()
-    # Format numbers
     df_formatted = df.copy()
     for col in ["LP CF", "GP CF"]:
         df_formatted[col] = df_formatted[col].apply(lambda x: f"${x:,.0f}")
@@ -574,7 +655,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         if idx < len(parts) - 1:
             story.append(PageBreak())
 
-    # Monte Carlo Analysis (pages 7-8)
+    # Monte Carlo
     story.append(PageBreak())
     story.append(Paragraph("Monte Carlo Analysis — LP IRR Distribution", styles['Heading2']))
     st_lines = [
@@ -586,7 +667,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Paragraph(line, normal))
     story.append(Spacer(1, 12))
 
-    # embed images if available
     try:
         png_hist = figure_to_png_bytes(fig_monte) if fig_monte is not None else None
         png_wf = figure_to_png_bytes(fig_waterfall) if fig_waterfall is not None else None
@@ -601,10 +681,9 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
             story.append(ImageReader(BytesIO(png_wf)))
             story.append(Spacer(1, 6))
     except Exception:
-        # ignore image errors
         pass
 
-    # Waterfall mechanics & promote details (page 9)
+    # Waterfall mechanics
     story.append(PageBreak())
     story.append(Paragraph("Waterfall Mechanics & Promote Tiers", styles['Heading2']))
     wf_text = "Promote tiers (IRR-hurdle driven):\n"
@@ -616,7 +695,7 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     story.append(Paragraph(wf_text.replace("\n", "<br/>"), normal))
     story.append(Spacer(1, 12))
 
-    # Appendix (pages 10-11): assumptions, full input summary & CSV notice
+    # Appendix
     story.append(PageBreak())
     story.append(Paragraph("Appendix: Full Inputs & Notes", styles['Heading2']))
     inputs_summary = [
@@ -633,46 +712,18 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     story.append(Paragraph("CSV / Data Exports", styles['Heading3']))
     story.append(Paragraph("Download deterministic and Monte Carlo outputs from the web UI.", small))
 
-    # finish
     doc.build(story, onFirstPage=lambda c, d: add_header_footer(c, logo_blob_tuple),
               onLaterPages=lambda c, d: add_header_footer(c, logo_blob_tuple))
     buf.seek(0)
     return buf.getvalue(), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.pdf"
 
-# header/footer function used by Platypus build
-def add_header_footer(c, logo_blob_tuple):
-    width, height = letter
-    c.setFont("Helvetica", 8)
-    # Header left: product title
-    c.drawString(36, height - 50, "Pro Forma AI — Institutional")
-    # Header right: date
-    c.drawRightString(width - 36, height - 50, datetime.today().strftime("%B %d, %Y"))
-    # Footer: page number
-    page_num_text = f"Page {c.getPageNumber()}"
-    c.drawCentredString(width / 2.0, 30, page_num_text)
-    # logo in header if provided
-    if logo_blob_tuple:
-        try:
-            logo_bytes, _ = logo_blob_tuple
-            img = ImageReader(BytesIO(logo_bytes))
-            # draw small logo at header left
-            c.drawImage(img, width - 140, height - 70, width=80, height=30, preserveAspectRatio=True, mask='auto')
-        except Exception:
-            pass
-
-# High-level PDF generator that chooses between the long memo and a short summary
 def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
-    """
-    Try to create full memo using ReportLab. If fails, fallback to a short two-page PDF.
-    """
     try:
         pdf_bytes, filename = generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
         return pdf_bytes, filename
-    except Exception as e:
-        # fallback: produce a short text/PDF
+    except Exception:
         try:
             if REPORTLAB_AVAILABLE:
-                # basic single-page PDF
                 buf = BytesIO()
                 c = canvas.Canvas(buf, pagesize=letter)
                 width, height = letter
@@ -693,7 +744,6 @@ def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tu
                 return buf.getvalue(), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.pdf"
         except Exception:
             pass
-        # ultimate fallback: plain text bytes
         text = (f"Pro Forma AI Summary\nDate: {datetime.today().strftime('%B %d, %Y')}\n"
                 f"LP IRR (det): {robust_irr(det['lp_cfs']):.2%}\n"
                 f"P50 (MC): {monte_stats.get('p50', 'N/A')}\n"
@@ -736,6 +786,8 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
     if irrs.size == 0:
         st.error("Monte Carlo produced no valid IRRs. Check inputs.")
         p5 = p50 = p95 = None
+        fig_monte = None
+        fig_waterfall = None
     else:
         p5, p50, p95 = np.percentile(irrs, [5, 50, 95])
         st.subheader("Monte Carlo Results (LP IRR)")
@@ -749,7 +801,7 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         fig_monte.add_vline(x=p50*100, line_color="white", line_width=3)
         st.plotly_chart(fig_monte, use_container_width=True)
 
-        # deterministic WP waterfall
+        # deterministic waterfall (simple)
         try:
             op_sum = sum([x for x in det['lp_cfs'][1:-1]]) if len(det['lp_cfs'])>2 else 0
             wf = go.Figure(go.Waterfall(
@@ -785,26 +837,23 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
                                                       fig_monte if 'fig_monte' in locals() else None,
                                                       fig_waterfall if 'fig_waterfall' in locals() else None,
                                                       logo_blob)
-            # If returned type is bytes (pdf or text)
             mime = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
             st.success("PDF memo ready")
             st.download_button("Download Full PDF Memo", pdf_bytes, filename, mime)
         except Exception as e:
             st.error(f"PDF generation failed: {e}")
-            # fallback: provide summary txt
             summary_text = (f"Deterministic LP IRR: {lp_irr:.2%}\n"
                             f"P50 (MC): {monte_stats.get('p50')}\n"
                             f"P95 (MC): {monte_stats.get('p95')}\n")
             st.download_button("Download Summary (TXT)", summary_text.encode(), "proforma_summary.txt", "text/plain")
 
-    # also offer Monte Carlo raw results
+    # Monte Carlo raw results download
     if 'irrs' in locals() and irrs.size > 0:
-        # create CSV of IRRs
         buf = io.StringIO()
         pd.DataFrame({"LP_IRR": irrs}).to_csv(buf, index=False)
         st.download_button("Download Monte Carlo IRRs (CSV)", buf.getvalue().encode(), "mc_irrs.csv", "text/csv")
 
-    # optional remote PDF service (non-blocking)
+    # optional remote PDF service (best-effort)
     try:
         payload = {
             "date": datetime.today().strftime("%B %d, %Y"),
