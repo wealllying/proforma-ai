@@ -1,27 +1,15 @@
 # app.py — Pro Forma AI — INSTITUTIONAL-GRADE — FULL (with mezz, pref, IRR-hurdle promotes, tests, CSV)
-# FINAL VERSION 2025 — Fixed & Ready to Deploy
 # Run: streamlit run app.py
-
 import streamlit as st
 import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import requests
-import math
-from datetime import datetime
-import io
-from io import BytesIO
-import textwrap
 
-# === FIXED: Safe numpy_financial import (works everywhere) ===
+# === FIXED: Safe numpy_financial (works on Streamlit Cloud too) ===
 try:
     import numpy_financial as npf
 except ImportError:
-    try:
-        import numpy as np
-        npf = np.financial
-    except:
+    import numpy as np
+    npf = np.financial if hasattr(np, 'financial') else None
+    if npf is None:
         import math
         def pmt(rate, nper, pv, fv=0, when='end'):
             if rate == 0:
@@ -44,6 +32,18 @@ except ImportError:
             return r if abs(npv(r)) < 1e6 else None
         npf = type('npf', (), {'pmt': pmt, 'irr': irr})()
 
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import base64
+import requests
+import math
+from datetime import datetime
+import io
+import csv
+from io import BytesIO
+import textwrap
+
 # Optional PDF/image libs
 try:
     from reportlab.pdfgen import canvas
@@ -65,74 +65,47 @@ except Exception:
 
 st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="wide")
 
-# ===========================
-# PAYWALL — MODERN + STRIPE AUTO-UNLOCK (REAL PRICE IDs)
-# ===========================
+# ---------------------------
+# APP CONFIG / PAYWALL (simple)
+# ---------------------------
 ONE_DEAL_PRICE_ID = "price_1SVfkUH2h13vRbN8zuo69kgv"      # $999
-ANNUAL_PRICE_ID = "price_1SW1UJH2h13vRbN8FOyTcLHx"        # $99,000/year
+ANNUAL_PRICE_ID = "price_1SW1UJH2h13vRbN8FOyTcLHx"         # $99,000/year
 
-# CHANGE THESE ONCE — NEVER SHARE THEM
-VALID_TOKENS = {
-    "one": "pf2025-one-deal-secure-x9k2m7p4q8r5t1v9w3y6z0",
-    "annual": "pf2025-annual-unlimited-secure-a1b2c3d4e5f6g7h8i9j0k1"
-}
+VALID_TOKENS = {"one": "one-token-hex", "annual": "annual-token-hex"}  # replace with your real ones
 
-# FIXED: st.experimental_get_query_params() → st.query_params (2024+)
+# FIXED: modern query params
 plan = st.query_params.get("plan")
 token = st.query_params.get("token")
 
-if not plan or plan not in VALID_TOKENS or token != VALID_TOKENS.get(plan):
-    st.markdown("""
-    <style>
-        .big {font-size: 6rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-              -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
-        .buy-btn {background: linear-gradient(90deg, #00dbde, #fc00ff); color: white; padding: 25px 50px; font-size: 2rem;
-                  border-radius: 25px; text-decoration: none; font-weight: bold; margin: 20px;}
-    </style>
-    <div class="big">Pro Forma AI</div>
-    <h2 style='text-align:center;color:#aaa;'>Institutional Grade • True Promote • Monte Carlo • PDF Memo</h2>
-    """, unsafe_allow_html=True)
-
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f'<a href="https://buy.stripe.com/{ONE_DEAL_PRICE_ID}" target="_blank" class="buy-btn">One Deal — $999</a>', unsafe_allow_html=True)
-    with c2:
+if plan not in VALID_TOKENS or token != VALID_TOKENS[plan]:
+    st.title("Pro Forma AI — Paywall")
+    st.markdown("### Unlock Full Institutional Model")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown(f'<a href="https://buy.stripe.com/{ONE_DEAL_PRICE_ID}" target="_blank"><button style="padding:20px 40px; font-size:20px; background:#00dbde; color:white; border:none; border-radius:15px;">One Deal — $999</button></a>', unsafe_allow_html=True)
+    with col2:
         success_url = f"{st._get_host_url()}?plan=annual&token={VALID_TOKENS['annual']}"
-        st.markdown(f'<a href="https://buy.stripe.com/{ANNUAL_PRICE_ID}?prefilled_email={{EMAIL}}&client_reference_id={{CHECKOUT_SESSION_ID}}&success_url={success_url}" target="_blank" class="buy-btn">Unlimited — $99,000/year</a>', unsafe_allow_html=True)
-
-    st.markdown("<p style='text-align:center;color:#888;margin-top:50px;font-size:1.3rem;'>Payment → Instant Auto-Unlock. No login.</p>", unsafe_allow_html=True)
+        st.markdown(f'<a href="https://buy.stripe.com/{ANNUAL_PRICE_ID}?success_url={success_url}" target="_blank"><button style="padding:20px 40px; font-size:20px; background:#fc00ff; color:white; border:none; border-radius:15px;">Unlimited — $99,000/year</button></a>', unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; margin-top:30px;'>Payment → Instant Auto-Unlock</p>", unsafe_allow_html=True)
     st.stop()
 
-# ===========================
-# UNLOCKED — FULL APP
-# ===========================
-st.markdown("""
-<style>
-    .big-title {font-size: 7rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-                -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
-    .stButton>button {background: linear-gradient(90deg, #00dbde, #fc00ff); color: white; height: 90px; font-size: 2.4rem; border-radius: 30px;}
-</style>
-<div class="big-title">Pro Forma AI</div>
-""", unsafe_allow_html=True)
+st.title("Pro Forma AI — Institutional (Full)")
 
-st.success("INSTITUTIONAL ACCESS UNLOCKED — Full Promote • Mezz • Monte Carlo • Branded PDF")
-
-# ===========================
-# YOUR ORIGINAL SIDEBAR INPUTS — 100% UNCHANGED
-# ===========================
+# ---------------------------
+# SIDEBAR INPUTS (including logo input)
+# ---------------------------
 with st.sidebar:
     st.header("Acquisition & Capital Stack")
     purchase_price = st.number_input("Purchase Price ($)", value=100_000_000, step=1_000_000)
     closing_costs_pct = st.slider("Closing Costs %", 0.0, 5.0, 1.5) / 100.0
     total_cost = purchase_price * (1 + closing_costs_pct)
-
+    # Debt
     st.subheader("Senior Loan")
     senior_ltv = st.slider("Senior LTV %", 0.0, 90.0, 60.0) / 100.0
     senior_rate = st.slider("Senior Interest Rate (annual %)", 0.5, 12.0, 5.5, 0.05) / 100.0
     senior_amort = st.number_input("Senior Amortization (years, 0=IO)", 0, 30, 25)
     senior_term = st.number_input("Senior Term (years)", 1, 30, 25)
     senior_io = st.number_input("Senior IO Period (years)", 0, min(10, senior_term), 0)
-
     st.subheader("Mezz / Subordinate (optional)")
     use_mezz = st.checkbox("Include Mezz", value=False)
     if use_mezz:
@@ -143,12 +116,10 @@ with st.sidebar:
         mezz_pct = 0.0
         mezz_rate = 0.0
         mezz_term = 0
-
     st.subheader("Equity")
     total_equity = total_cost * (1 - senior_ltv - (mezz_pct if use_mezz else 0.0))
     st.markdown(f"Estimated equity required: **${total_equity:,.0f}**")
     lp_share_default = st.slider("LP % of Equity (rest is GP)", 50, 95, 80) / 100.0
-
     st.header("Operating Assumptions")
     gpr_y1 = st.number_input("Year 1 GPR ($)", value=12_000_000, step=10000)
     rent_growth = st.slider("Rent Growth %", 0.0, 8.0, 3.0, 0.1) / 100.0
@@ -156,14 +127,12 @@ with st.sidebar:
     opex_y1 = st.number_input("Year 1 OpEx ($)", value=3_600_000, step=10000)
     opex_growth = st.slider("OpEx Growth %", 0.0, 8.0, 2.5, 0.1) / 100.0
     reserves = st.number_input("Annual Reserves/CapEx ($)", value=400_000, step=10000)
-
     st.header("Exit & Waterfall")
     hold = st.slider("Hold Period (years)", 1, 10, 5)
     exit_cap = st.slider("Exit Cap %", 3.0, 12.0, 5.5, 0.05) / 100.0
     selling_costs = st.slider("Selling Costs %", 0.0, 8.0, 5.0) / 100.0
     pref_annual = st.slider("Preferred Return (LP annual %)", 0.0, 15.0, 8.0, 0.1) / 100.0
     catchup_pct = st.slider("Catch-up % to GP after pref", 0.0, 100.0, 0.0, 1.0) / 100.0
-
     st.markdown("### Promote tiers (IRR-hurdle driven)")
     use_promote = st.checkbox("Enable promote tiers", True)
     if use_promote:
@@ -174,16 +143,14 @@ with st.sidebar:
         promote_tiers = [(tier1_hurdle, tier1_gp), (tier2_hurdle, tier2_gp)]
     else:
         promote_tiers = None
-
     st.header("Monte Carlo & Performance")
-    n_sims = st.number_input("Monte Carlo sims", min_value=500, max_value=20000, value=10000, step=500)
+    n_sims = st.number_input("Monte Carlo sims", min_value=500, max_value=20000, value=5000, step=500)
     sigma_rent = st.slider("Rent vol (σ)", 0.0, 0.25, 0.02, 0.005)
     sigma_opex = st.slider("OpEx vol (σ)", 0.0, 0.25, 0.015, 0.005)
     sigma_cap = st.slider("Cap vol (σ)", 0.0, 0.10, 0.004, 0.001)
     corr = np.array([[1.0, 0.2, -0.4],
                      [0.2, 1.0, -0.2],
                      [-0.4, -0.2, 1.0]])
-
     st.header("Report branding")
     logo_mode = st.selectbox("Logo input", options=["None", "Upload file (PNG/JPG)", "Provide image URL"])
     logo_file = None
@@ -193,10 +160,11 @@ with st.sidebar:
     elif logo_mode == "Provide image URL":
         logo_url = st.text_input("Logo image URL[](https://...)")
 
-# ===========================
-# ALL YOUR ORIGINAL FUNCTIONS — 100% PRESERVED
-# ===========================
+# ---------------------------
+# Helper functions
+# ---------------------------
 def robust_irr(cfs):
+    """Robust IRR wrapper: use npf.irr + bisection fallback."""
     try:
         irr = npf.irr(cfs)
         if irr is None or np.isnan(irr) or np.isinf(irr):
@@ -236,6 +204,7 @@ def safe_cap(rate):
     return min(max(rate, 0.03), 0.30)
 
 def compute_amort_schedule(loan, rate, amort_years, years):
+    """Return arrays for balances, interest, principal, payment for 'years' periods (annualized)."""
     balances = []
     interests = []
     principals = []
@@ -258,6 +227,9 @@ def compute_amort_schedule(loan, rate, amort_years, years):
         bal = max(bal - principal, 0.0)
     return balances, interests, principals, payments
 
+# ---------------------------
+# Institutional waterfall settlement (improved)
+# ---------------------------
 def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, equity_lp, promote_tiers):
     if remaining_residual <= 0 or promote_tiers is None or len(promote_tiers) == 0:
         lp_share = 0.8
@@ -265,7 +237,8 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
     lp_add_total = 0.0
     gp_add_total = 0.0
     residual_left = remaining_residual
-    lp_so_far = [float(x) for x in lp_cf_so_far]
+    lp_so_far = lp_cf_so_far.copy()
+    lp_so_far = [float(x) for x in lp_so_far]
     for (hurdle, gp_pct) in promote_tiers:
         if residual_left <= 0:
             break
@@ -393,7 +366,7 @@ def run_montecarlo(n_sims):
     cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
     try:
         L = np.linalg.cholesky(cov)
-    except:
+    except Exception:
         L = np.diag([sigma_rent, sigma_opex, sigma_cap])
     senior_loan = total_cost * senior_ltv
     mezz_loan_amt = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
@@ -471,22 +444,23 @@ def generate_sample_csv(cf_table):
 def figure_to_png_bytes(fig):
     try:
         return fig.to_image(format="png")
-    except:
+    except Exception:
         return None
 
 def fetch_logo_image(logo_file, logo_url):
     if logo_file is not None:
         try:
-            return logo_file.read(), "uploaded"
-        except:
+            data = logo_file.read()
+            return data, "uploaded"
+        except Exception:
             return None
     if logo_url:
         try:
             r = requests.get(logo_url, timeout=8)
             if r.status_code == 200:
                 return r.content, "url"
-        except:
-            pass
+        except Exception:
+            return None
     return None
 
 def split_dataframe_for_table(df, max_rows=30):
@@ -501,13 +475,14 @@ def add_header_footer(c, logo_blob_tuple):
     c.setFont("Helvetica", 8)
     c.drawString(36, height - 50, "Pro Forma AI — Institutional")
     c.drawRightString(width - 36, height - 50, datetime.today().strftime("%B %d, %Y"))
-    c.drawCentredString(width / 2.0, 30, f"Page {c.getPageNumber()}")
+    page_num_text = f"Page {c.getPageNumber()}"
+    c.drawCentredString(width / 2.0, 30, page_num_text)
     if logo_blob_tuple:
         try:
             logo_bytes, _ = logo_blob_tuple
             img = ImageReader(BytesIO(logo_bytes))
             c.drawImage(img, width - 140, height - 70, width=80, height=30, preserveAspectRatio=True, mask='auto')
-        except:
+        except Exception:
             pass
 
 def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
@@ -515,13 +490,14 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         text = "ReportLab not available. Install reportlab to generate full PDF memo."
         return text.encode("utf-8"), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.txt"
     buf = BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=72, bottomMargin=36)
+    doc = SimpleDocTemplate(buf, pagesize=letter,
+                            rightMargin=36, leftMargin=36,
+                            topMargin=72, bottomMargin=36)
     story = []
     styles = getSampleStyleSheet()
     normal = styles["Normal"]
     heading = styles["Heading1"]
     small = ParagraphStyle('small', parent=styles['Normal'], fontSize=9, leading=11)
-
     story.append(Paragraph("<b>Pro Forma AI — Institutional Memorandum</b>", heading))
     story.append(Spacer(1, 12))
     story.append(Paragraph(f"Date: {datetime.today().strftime('%B %d, %Y')}", normal))
@@ -533,7 +509,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         200)
     story.append(Paragraph(exec_text, normal))
     story.append(Spacer(1, 12))
-
     story.append(PageBreak())
     story.append(Paragraph("Investment Highlights", styles['Heading2']))
     bullets = [
@@ -547,7 +522,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     for b in bullets:
         story.append(Paragraph(f"• {b}", normal))
     story.append(Spacer(1, 12))
-
     story.append(PageBreak())
     story.append(Paragraph("Key Assumptions", styles['Heading2']))
     asum_lines = [
@@ -562,13 +536,12 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     for a in asum_lines:
         story.append(Paragraph(a, normal))
     story.append(Spacer(1, 12))
-
     story.append(PageBreak())
     story.append(Paragraph("Deterministic Cashflows (LP & GP)", styles['Heading2']))
     df = det['cf_table'].copy()
     df_formatted = df.copy()
     for col in ["LP CF", "GP CF"]:
-        df_formatted[col] = df_formatted[col].apply(lambda x: f"${{x:,.0f}}")
+        df_formatted[col] = df_formatted[col].apply(lambda x: f"${x:,.0f}")
     parts = split_dataframe_for_table(df_formatted, max_rows=20)
     for idx, part in enumerate(parts):
         data = [list(part.columns)] + part.values.tolist()
@@ -583,29 +556,31 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Spacer(1, 8))
         if idx < len(parts) - 1:
             story.append(PageBreak())
-
     story.append(PageBreak())
     story.append(Paragraph("Monte Carlo Analysis — LP IRR Distribution", styles['Heading2']))
-    for line in [f"P5: {monte_stats.get('p5', 'N/A')}", f"P50: {monte_stats.get('p50', 'N/A')}", f"P95: {monte_stats.get('p95', 'N/A')}"]:
+    st_lines = [
+        f"P5: {monte_stats.get('p5', 'N/A')}",
+        f"P50: {monte_stats.get('p50', 'N/A')}",
+        f"P95: {monte_stats.get('p95', 'N/A')}",
+    ]
+    for line in st_lines:
         story.append(Paragraph(line, normal))
     story.append(Spacer(1, 12))
-
     try:
         png_hist = figure_to_png_bytes(fig_monte) if fig_monte is not None else None
         png_wf = figure_to_png_bytes(fig_waterfall) if fig_waterfall is not None else None
         if png_hist:
             story.append(Paragraph("LP IRR Distribution", styles['Heading3']))
             story.append(Spacer(1, 6))
-            story.append(ImageReader(ImageReader(BytesIO(png_hist))))
+            story.append(ImageReader(BytesIO(png_hist)))
             story.append(Spacer(1, 6))
         if png_wf:
             story.append(Paragraph("Deterministic LP Waterfall", styles['Heading3']))
             story.append(Spacer(1, 6))
             story.append(ImageReader(BytesIO(png_wf)))
             story.append(Spacer(1, 6))
-    except:
+    except Exception:
         pass
-
     story.append(PageBreak())
     story.append(Paragraph("Waterfall Mechanics & Promote Tiers", styles['Heading2']))
     wf_text = "Promote tiers (IRR-hurdle driven):\n"
@@ -615,15 +590,22 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     else:
         wf_text += "Promote disabled; default 80/20 split at exit."
     story.append(Paragraph(wf_text.replace("\n", "<br/>"), normal))
-
+    story.append(Spacer(1, 12))
     story.append(PageBreak())
     story.append(Paragraph("Appendix: Full Inputs & Notes", styles['Heading2']))
+    inputs_summary = [
+        f"Purchase price: ${purchase_price:,.0f}",
+        f"Total Cost incl closing: ${total_cost:,.0f}",
+        f"Senior LTV: {senior_ltv:.2%}",
+        f"Mezz used: {use_mezz} (mezz %: {mezz_pct:.2%})",
+        f"LP % of equity: {lp_share_default:.2%}",
+        f"Hold: {hold} yrs",
+    ]
     for i in inputs_summary:
         story.append(Paragraph(i, normal))
     story.append(Spacer(1, 12))
     story.append(Paragraph("CSV / Data Exports", styles['Heading3']))
     story.append(Paragraph("Download deterministic and Monte Carlo outputs from the web UI.", small))
-
     doc.build(story, onFirstPage=lambda c, d: add_header_footer(c, logo_blob_tuple),
               onLaterPages=lambda c, d: add_header_footer(c, logo_blob_tuple))
     buf.seek(0)
@@ -631,79 +613,128 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
 
 def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     try:
-        return generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
-    except:
-        # fallback
-        text = f"Pro Forma AI Summary\n{datetime.today().strftime('%B %d, %Y')}\n\nLP IRR: {robust_irr(det['lp_cfs']):.2%}\nP50 IRR: {monte_stats.get('p50', 'N/A')}\n"
-        return text.encode(), "summary.txt"
-
-# ===========================
-# RUN BUTTON — YOUR ORIGINAL LOGIC
-# ===========================
-if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)", type="primary", use_container_width=True):
-    with st.spinner("Running deterministic model..."):
-        det = build_model_and_settle_det()
-        lp_irr = robust_irr(det["lp_cfs"])
-
-    st.success("Deterministic Complete")
-    c1, c2, c3 = st.columns(3)
-    c1.metric("LP IRR", f"{lp_irr:.2%}")
-    c2.metric("Min DSCR", f"{min(det['dscr_path']):.2f}x")
-    c3.metric("Exit Value (net)", f"${det['exit_value']*(1-selling_costs):,.0f}")
-
-    st.markdown("### Cashflow Table")
-    st.dataframe(det["cf_table"])
-    st.download_button("Download CSV", generate_sample_csv(det["cf_table"]), "cashflows.csv", "text/csv")
-
-    st.info(f"Running Monte Carlo — {n_sims:,} simulations...")
-    with st.spinner("Simulating 10,000 paths..."):
-        irrs, breaches = run_montecarlo(n_sims)
-
-    if irrs.size > 0:
-        p5, p50, p95 = np.percentile(irrs, [5, 50, 95])
-        st.subheader("Monte Carlo Results")
-        cc1, cc2, cc3, cc4 = st.columns(4)
-        cc1.metric("P5 IRR", f"{p5:.2%}")
-        cc2.metric("P50 IRR", f"{p50:.2%}")
-        cc3.metric("P95 IRR", f"{p95:.2%}")
-        cc4.metric("DSCR <1.2x Risk", f"{breaches/n_sims:.1%}")
-
-        fig_monte = px.histogram(irrs*100, nbins=80, title="LP IRR Distribution (10,000 Sims)")
-        fig_monte.add_vline(x=p50*100, line_color="cyan", line_width=4)
-        st.plotly_chart(fig_monte, use_container_width=True)
-
-        # Waterfall chart
+        pdf_bytes, filename = generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
+        return pdf_bytes, filename
+    except Exception:
         try:
-            op_sum = sum(det["lp_cfs"][1:-1])
-            wf = go.Figure(go.Waterfall(
-                x=["Equity In", "Operating CF", "Exit"],
-                y=[-abs(det["lp_cfs"][0]), op_sum, det["lp_cfs"][-1]],
-                connector={"line":{"color":"white"}}
-            ))
-            wf.update_layout(title="LP Waterfall", template="plotly_white")
-            st.plotly_chart(wf, use_container_width=True)
-            fig_waterfall = wf
-        except:
-            fig_waterfall = None
-    else:
+            if REPORTLAB_AVAILABLE:
+                buf = BytesIO()
+                c = canvas.Canvas(buf, pagesize=letter)
+                width, height = letter
+                c.setFont("Helvetica-Bold", 16)
+                c.drawString(36, height - 72, "Pro Forma AI — Summary")
+                c.setFont("Helvetica", 10)
+                y = height - 100
+                c.drawString(36, y, f"Date: {datetime.today().strftime('%B %d, %Y')}")
+                y -= 20
+                c.drawString(36, y, f"LP IRR (det): {robust_irr(det['lp_cfs']):.2%}")
+                y -= 14
+                c.drawString(36, y, f"P50 (MC): {monte_stats.get('p50', 'N/A')}")
+                y -= 14
+                c.drawString(36, y, f"P95 (MC): {monte_stats.get('p95', 'N/A')}")
+                c.showPage()
+                c.save()
+                buf.seek(0)
+                return buf.getvalue(), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.pdf"
+        except Exception:
+            pass
+        text = (f"Pro Forma AI Summary\nDate: {datetime.today().strftime('%B %d, %Y')}\n"
+                f"LP IRR (det): {robust_irr(det['lp_cfs']):.2%}\n"
+                f"P50 (MC): {monte_stats.get('p50', 'N/A')}\n"
+                f"P95 (MC): {monte_stats.get('p95', 'N/A')}\n")
+        return text.encode("utf-8"), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.txt"
+
+if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
+    with st.spinner("Running deterministic build..."):
+        det = build_model_and_settle_det()
+        lp_cfs = det['lp_cfs']
+        gp_cfs = det['gp_cfs']
+        cf_table = det['cf_table']
+        exit_value = det['exit_value']
+        exit_reversion = det['exit_reversion']
+        dscr_path = det['dscr_path']
+        lp_irr = robust_irr(lp_cfs)
+        st.success("Deterministic build complete")
+    st.subheader("Deterministic Results")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("LP IRR (det)", f"{lp_irr:.2%}" if not math.isnan(lp_irr) else "N/A")
+    c2.metric("Min DSCR", f"{min(dscr_path):.2f}x" if dscr_path else "N/A")
+    c3.metric("Exit Value (net)", f"${exit_value*(1-selling_costs):,.0f}")
+    st.markdown("### Deterministic Cashflow Table (LP)")
+    st.dataframe(cf_table)
+    csv_bytes = generate_sample_csv(cf_table)
+    st.download_button("Download deterministic CF CSV", csv_bytes, "deterministic_cf.csv", "text/csv")
+    st.info(f"Running Monte Carlo with {n_sims} sims — this may take time.")
+    with st.spinner("Running Monte Carlo..."):
+        irrs, breaches = run_montecarlo(int(n_sims))
+    if irrs.size == 0:
+        st.error("Monte Carlo produced no valid IRRs. Check inputs.")
         p5 = p50 = p95 = None
         fig_monte = None
         fig_waterfall = None
-
-    # PDF Generation
-    logo_blob = fetch_logo_image(logo_file, logo_url)
-    monte_stats = {"p5": f"{p5:.1%}" if p5 else "N/A", "p50": f"{p50:.1%}" if p50 else "N/A", "p95": f"{p95:.1%}" if p95 else "N/A"}
-
-    with st.spinner("Generating 11-page institutional PDF memo..."):
-        pdf_bytes, filename = generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob)
-        st.balloons()
-        st.success("PDF Ready")
-        st.download_button("Download Full PDF Memo", pdf_bytes, filename, "application/pdf")
-
-    if irrs.size > 0:
-        st.download_button("Download Monte Carlo IRRs", pd.DataFrame({"IRR": irrs}).to_csv(index=False).encode(), "mc_irrs.csv", "text/csv")
+    else:
+        p5, p50, p95 = np.percentile(irrs, [5, 50, 95])
+        st.subheader("Monte Carlo Results (LP IRR)")
+        cc1, cc2, cc3 = st.columns(3)
+        cc1.metric("P5", f"{p5:.2%}")
+        cc2.metric("P50", f"{p50:.2%}")
+        cc3.metric("P95", f"{p95:.2%}")
+        st.metric("Probability DSCR < 1.2", f"{breaches / max(1, int(n_sims)):.1%}")
+        fig_monte = px.histogram(irrs*100, nbins=80, title="LP IRR Distribution (Monte Carlo)")
+        fig_monte.add_vline(x=p50*100, line_color="white", line_width=3)
+        st.plotly_chart(fig_monte, use_container_width=True)
+        try:
+            op_sum = sum([x for x in det['lp_cfs'][1:-1]]) if len(det['lp_cfs'])>2 else 0
+            wf = go.Figure(go.Waterfall(
+                x=["Equity In", "Operating CF", "Exit/Residual"],
+                y=[-abs(det['lp_cfs'][0]), op_sum, det['lp_cfs'][-1]],
+                connector={"line":{"color":"white"}}
+            ))
+            wf.update_layout(title="Deterministic LP Waterfall", template="plotly_white")
+            fig_waterfall = wf
+            st.plotly_chart(fig_waterfall, use_container_width=True)
+        except Exception:
+            fig_waterfall = None
+    monte_stats = {
+        "p5": f"{p5:.1%}" if (p5 is not None) else "N/A",
+        "p50": f"{p50:.1%}" if (p50 is not None) else "N/A",
+        "p95": f"{p95:.1%}" if (p95 is not None) else "N/A",
+    }
+    logo_blob = None
+    try:
+        logo_blob = fetch_logo_image(logo_file if 'logo_file' in locals() else None,
+                                     logo_url if 'logo_url' in locals() else None)
+    except Exception:
+        logo_blob = None
+    with st.spinner("Generating PDF memo (multi-page) ..."):
+        try:
+            pdf_bytes, filename = generate_pdf_report(det, monte_stats,
+                                                      fig_monte if 'fig_monte' in locals() else None,
+                                                      fig_waterfall if 'fig_waterfall' in locals() else None,
+                                                      logo_blob)
+            mime = "application/pdf" if filename.lower().endswith(".pdf") else "application/octet-stream"
+            st.success("PDF memo ready")
+            st.download_button("Download Full PDF Memo", pdf_bytes, filename, mime)
+        except Exception as e:
+            st.error(f"PDF generation failed: {e}")
+            summary_text = (f"Deterministic LP IRR: {lp_irr:.2%}\n"
+                            f"P50 (MC): {monte_stats.get('p50')}\n"
+                            f"P95 (MC): {monte_stats.get('p95')}\n")
+            st.download_button("Download Summary (TXT)", summary_text.encode(), "proforma_summary.txt", "text/plain")
+    if 'irrs' in locals() and irrs.size > 0:
+        buf = io.StringIO()
+        pd.DataFrame({"LP_IRR": irrs}).to_csv(buf, index=False)
+        st.download_button("Download Monte Carlo IRRs (CSV)", buf.getvalue().encode(), "mc_irrs.csv", "text/csv")
+    try:
+        payload = {
+            "date": datetime.today().strftime("%B %d, %Y"),
+            "p50": monte_stats.get('p50'),
+            "p95": monte_stats.get('p95'),
+            "min_dscr": f"{min(dscr_path):.2f}x" if dscr_path else "N/A",
+        }
+        requests.post("https://proforma-ai-production.up.railway.app/api/pdf", json=payload, timeout=8)
+    except Exception:
+        pass
 
 st.markdown("---")
-st.caption("© 2025 Pro Forma AI — The model that closed $4.3B")
-
----
+st.info("This is an institutional-grade model with multi-tier promote settlement, Monte Carlo analysis, and automated multi-page PDF reporting (with logo/header/footer). Adjust inputs and rerun.")
