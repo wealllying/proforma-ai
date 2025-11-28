@@ -5,3 +5,4 @@ plotly
 reportlab
 kaleido
 numpy-financial  # this is the official new package
+stripe==11.3.0
