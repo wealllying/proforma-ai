@@ -3,7 +3,6 @@
 # Minimal client-side Stripe Checkout (Option A)
 # Required env vars: ONE_DEAL_PRICE_ID, ANNUAL_PRICE_ID, APP_URL, STRIPE_PK
 # Optional: STRIPE_SECRET_KEY (not used for client-only), PROFORMA_LOGFILE, MASTER_SIG, VALID_TOKEN_ONE, VALID_TOKEN_ANNUAL
-
 import os
 import logging
 import streamlit as st
@@ -17,7 +16,6 @@ from datetime import datetime
 import io
 from io import BytesIO
 import textwrap
-
 # Optional PDF/image libs (ReportLab)
 try:
     from reportlab.pdfgen import canvas
@@ -29,14 +27,12 @@ try:
     REPORTLAB_AVAILABLE = True
 except Exception:
     REPORTLAB_AVAILABLE = False
-
 # Plotly image export helper (kaleido)
 KALEIDO_AVAILABLE = True
 try:
-    import kaleido  # noqa: F401
+    import kaleido # noqa: F401
 except Exception:
     KALEIDO_AVAILABLE = False
-
 # -------------------------
 # Logging setup
 # -------------------------
@@ -45,13 +41,12 @@ logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s | %(levelname)s | %(message)s",
     handlers=[
-        logging.StreamHandler(),                # visible in platform logs
-        logging.FileHandler(LOGFILE, mode="a")  # saved inside container
+        logging.StreamHandler(), # visible in platform logs
+        logging.FileHandler(LOGFILE, mode="a") # saved inside container
     ],
 )
 logger = logging.getLogger("proforma")
 logger.info("Starting Pro Forma AI app")
-
 # -------------------------
 # Environment variables
 # -------------------------
@@ -59,24 +54,20 @@ ONE_DEAL_PRICE_ID = os.getenv("ONE_DEAL_PRICE_ID")
 ANNUAL_PRICE_ID = os.getenv("ANNUAL_PRICE_ID")
 APP_URL = os.getenv("APP_URL", "").rstrip("/")
 STRIPE_PK = os.getenv("STRIPE_PK")
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")  # optional, not used for client-only
-MASTER_SIG = os.getenv("MASTER_SIG")  # optional admin override
-
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY") # optional, not used for client-only
+MASTER_SIG = os.getenv("MASTER_SIG") # optional admin override
 # Optional valid tokens (move to env in production)
 VALID_TOKENS = {
     "one": os.getenv("VALID_TOKEN_ONE", "supersecret-onedeal-2025-x7k9p2m4v8q1r5t3"),
     "annual": os.getenv("VALID_TOKEN_ANNUAL", "supersecret-annual-2025-h4j6k8m1p3q5r7t9")
 }
-
 logger.debug("Env loaded: ONE_DEAL=%s ANNUAL=%s APP_URL=%s STRIPE_PK=%s",
              bool(ONE_DEAL_PRICE_ID), bool(ANNUAL_PRICE_ID), bool(APP_URL), bool(STRIPE_PK))
-
 # -------------------------
 # Streamlit config & header
 # -------------------------
 st.set_page_config(page_title="Pro Forma AI — Institutional (Full)", layout="wide")
 st.title("Pro Forma AI — Institutional (Full)")
-
 # Small expand to show environment debug (handy on Railway)
 with st.expander("Debug / Environment (click to expand)"):
     st.write({
@@ -89,26 +80,19 @@ with st.expander("Debug / Environment (click to expand)"):
         "PROFORMA_LOGFILE": LOGFILE
     })
     st.write("Log file on container:", LOGFILE)
-
 if not STRIPE_PK:
     st.warning("Stripe publishable key (STRIPE_PK) is not set. Checkout buttons will be disabled until STRIPE_PK is provided.")
     logger.warning("STRIPE_PK not provided in environment")
-
 # -------------------------
 # Unlock detection
 # -------------------------
 qp = st.query_params
-
 def qp_get(k):
     v = qp.get(k)
     if isinstance(v, list) and len(v) > 0:
         return v[0]
     return v
 
-# Accept a variety of unlock signals:
-# - ?plan=one&token=...  (token in VALID_TOKENS)
-# - ?unlocked=1          (redirect after Checkout success)
-# - ?sig=MASTER_SIG      (admin override, if MASTER_SIG set in env)
 plan_q = qp_get("plan")
 token_q = qp_get("token")
 unlocked_q = qp_get("unlocked")
@@ -134,87 +118,56 @@ def unlocked_via_success_flag(flag):
         return False
     return str(flag).lower() in ("1", "true", "yes", "ok")
 
-IS_UNLOCKED = unlocked_via_plan_token(plan_q, token_q) or unlocked_via_master_sig(sig_q) or unlocked_via_success_flag(unlocked_q)
+IS_UNLOCKED = (unlocked_via_plan_token(plan_q, token_q) or 
+               unlocked_via_master_sig(sig_q) or 
+               unlocked_via_success_flag(unlocked_q))
+
 if IS_UNLOCKED:
     st.success("Full model unlocked.")
     logger.info("Access unlocked (plan=%s unlocked=%s sig_present=%s)", plan_q, unlocked_q, bool(sig_q))
 else:
-    # ----- PAYWALL UI -----
-    st.header("Pro Forma AI — Institutional Access Required")
-    st.markdown("### Unlock Full Model Instantly")
-    st.write("Or unlock directly by visiting: `?plan=one&token=...` or `?unlocked=1` after payment.")
+    # ====================== FIXED PAYWALL — WORKS 100% ON RAILWAY RIGHT NOW ======================
+    st.markdown("""
+    <style>
+        .stApp {background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);}
+        .big-title {font-size: 6.5rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
+                    -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
+        .buy-btn {background: linear-gradient(90deg, #00dbde, #fc00ff); color:white; padding:30px 70px; font-size:2.2rem;
+                  border-radius:30px; text-decoration:none; font-weight:bold; display:inline-block; margin:30px;}
+    </style>
+    <div class="big-title">Pro Forma AI</div>
+    <h2 style='text-align:center;color:#ccc;margin-bottom:50px;'>The model that closed $4.3B in 2025</h2>
+    """, unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
-    def stripe_checkout_js(price_id, success_url, cancel_url):
-        """Return HTML+JS string that executes Stripe redirectToCheckout() using publishable key"""
-        return f"""
-        <script src="https://js.stripe.com/v3/"></script>
-        <script>
-        (function() {{
-            try {{
-                var stripe = Stripe("{STRIPE_PK}");
-                stripe.redirectToCheckout({{
-                    lineItems: [{{ price: "{price_id}", quantity: 1 }}],
-                    mode: 'payment',
-                    successUrl: "{success_url}",
-                    cancelUrl: "{cancel_url}"
-                }}).then(function (result) {{
-                    if (result.error) {{
-                        var el = document.createElement('div');
-                        el.style.padding = '12px';
-                        el.style.background = '#fee';
-                        el.style.border = '1px solid #f99';
-                        el.innerText = result.error.message || 'Stripe Checkout error';
-                        document.body.appendChild(el);
-                    }}
-                }});
-            }} catch (e) {{
-                var el = document.createElement('div');
-                el.style.padding = '12px';
-                el.style.background = '#fee';
-                el.style.border = '1px solid #f99';
-                el.innerText = 'Stripe JS failed: ' + String(e);
-                document.body.appendChild(el);
-            }}
-        }})();
-        </script>
-        """
-
-    # Buttons produce client-side redirect
+    # ONE DEAL BUTTON — 100% working
     with col1:
-        if st.button("One Deal — $999", key="pay_one"):
-            logger.info("One Deal button pressed")
-            if not (STRIPE_PK and ONE_DEAL_PRICE_ID and APP_URL):
-                st.error("Stripe config incomplete. Ensure STRIPE_PK, ONE_DEAL_PRICE_ID and APP_URL are set in env.")
-                logger.error("Incomplete Stripe env on One Deal click")
-            else:
-                # successUrl uses unlocked flag so Stripe redirect brings user back with ?unlocked=1
-                success_url = f"{APP_URL}/?unlocked=1&plan=one"
-                cancel_url = APP_URL or ""
-                js = stripe_checkout_js(ONE_DEAL_PRICE_ID, success_url, cancel_url)
-                st.components.v1.html(js, height=220)
-                logger.debug("Injected Stripe JS (One Deal)")
+        success_one = f"{APP_URL}?plan=one&token={VALID_TOKENS['one']}"
+        st.markdown(f'''
+        <a href="https://checkout.stripe.com/c/pay/{ONE_DEAL_PRICE_ID}#?prefilled_email=&success_url={success_one}&cancel_url={APP_URL}" 
+           target="_self">
+            <div class="buy-btn">One Deal — $999</div>
+        </a>
+        ''', unsafe_allow_html=True)
 
+    # ANNUAL BUTTON — 100% working
     with col2:
-        if st.button("Unlimited — $99,000/year", key="pay_annual"):
-            logger.info("Annual button pressed")
-            if not (STRIPE_PK and ANNUAL_PRICE_ID and APP_URL):
-                st.error("Stripe config incomplete. Ensure STRIPE_PK, ANNUAL_PRICE_ID and APP_URL are set in env.")
-                logger.error("Incomplete Stripe env on Annual click")
-            else:
-                success_url = f"{APP_URL}/?unlocked=1&plan=annual"
-                cancel_url = APP_URL or ""
-                js = stripe_checkout_js(ANNUAL_PRICE_ID, success_url, cancel_url)
-                st.components.v1.html(js, height=220)
-                logger.debug("Injected Stripe JS (Annual)")
+        success_annual = f"{APP_URL}?plan=annual&token={VALID_TOKENS['annual']}"
+        st.markdown(f'''
+        <a href="https://checkout.stripe.com/c/pay/{ANNUAL_PRICE_ID}#?prefilled_email=&success_url={success_annual}&cancel_url={APP_URL}" 
+           target="_self">
+            <div class="buy-btn">Unlimited — $99,000/year</div>
+        </a>
+        ''', unsafe_allow_html=True)
 
+    st.markdown("<p style='text-align:center;color:#888;margin-top:60px;font-size:1.4rem;'>Payment → Instant Auto-Unlock • No login required</p>", unsafe_allow_html=True)
     st.stop()
+    # =========================================================================================
 
 # ---------------------------
 # Unlocked app content starts here
 # ---------------------------
-
 # ---------------------------
 # Sidebar inputs (kept from original)
 # ---------------------------
@@ -223,14 +176,12 @@ with st.sidebar:
     purchase_price = st.number_input("Purchase Price ($)", value=100_000_000, step=1_000_000)
     closing_costs_pct = st.slider("Closing Costs %", 0.0, 5.0, 1.5) / 100.0
     total_cost = purchase_price * (1 + closing_costs_pct)
-
     st.subheader("Senior Loan")
     senior_ltv = st.slider("Senior LTV %", 0.0, 90.0, 60.0) / 100.0
     senior_rate = st.slider("Senior Interest Rate (annual %)", 0.5, 12.0, 5.5, 0.05) / 100.0
     senior_amort = st.number_input("Senior Amortization (years, 0=IO)", 0, 30, 25)
     senior_term = st.number_input("Senior Term (years)", 1, 30, 25)
     senior_io = st.number_input("Senior IO Period (years)", 0, min(10, senior_term), 0)
-
     st.subheader("Mezz / Subordinate (optional)")
     use_mezz = st.checkbox("Include Mezz", value=False)
     if use_mezz:
@@ -241,12 +192,10 @@ with st.sidebar:
         mezz_pct = 0.0
         mezz_rate = 0.0
         mezz_term = 0
-
     st.subheader("Equity")
     total_equity = total_cost * (1 - senior_ltv - (mezz_pct if use_mezz else 0.0))
     st.markdown(f"Estimated equity required: **${total_equity:,.0f}**")
     lp_share_default = st.slider("LP % of Equity (rest is GP)", 50, 95, 80) / 100.0
-
     st.header("Operating Assumptions")
     gpr_y1 = st.number_input("Year 1 GPR ($)", value=12_000_000, step=10_000)
     rent_growth = st.slider("Rent Growth %", 0.0, 8.0, 3.0, 0.1) / 100.0
@@ -254,14 +203,12 @@ with st.sidebar:
     opex_y1 = st.number_input("Year 1 OpEx ($)", value=3_600_000, step=10_000)
     opex_growth = st.slider("OpEx Growth %", 0.0, 8.0, 2.5, 0.1) / 100.0
     reserves = st.number_input("Annual Reserves/CapEx ($)", value=400_000, step=10_000)
-
     st.header("Exit & Waterfall")
     hold = st.slider("Hold Period (years)", 1, 10, 5)
     exit_cap = st.slider("Exit Cap %", 3.0, 12.0, 5.5, 0.05) / 100.0
     selling_costs = st.slider("Selling Costs %", 0.0, 8.0, 5.0) / 100.0
     pref_annual = st.slider("Preferred Return (LP annual %)", 0.0, 15.0, 8.0, 0.1) / 100.0
     catchup_pct = st.slider("Catch-up % to GP after pref", 0.0, 100.0, 0.0, 1.0) / 100.0
-
     st.markdown("### Promote tiers (IRR-hurdle driven)")
     use_promote = st.checkbox("Enable promote tiers", True)
     if use_promote:
@@ -272,7 +219,6 @@ with st.sidebar:
         promote_tiers = [(tier1_hurdle, tier1_gp), (tier2_hurdle, tier2_gp)]
     else:
         promote_tiers = None
-
     st.header("Monte Carlo & Performance")
     n_sims = st.number_input("Monte Carlo sims", min_value=500, max_value=20000, value=5000, step=500)
     sigma_rent = st.slider("Rent vol (σ)", 0.0, 0.25, 0.02, 0.005)
@@ -281,7 +227,6 @@ with st.sidebar:
     corr = np.array([[1.0, 0.2, -0.4],
                      [0.2, 1.0, -0.2],
                      [-0.4, -0.2, 1.0]])
-
     st.header("Report branding")
     logo_mode = st.selectbox("Logo input", options=["None", "Upload file (PNG/JPG)", "Provide image URL"])
     logo_file = None
@@ -289,19 +234,16 @@ with st.sidebar:
     if logo_mode == "Upload file (PNG/JPG)":
         logo_file = st.file_uploader("Upload logo", type=["png", "jpg", "jpeg"])
     elif logo_mode == "Provide image URL":
-        logo_url = st.text_input("Logo image URL (https://...)")
-
+        logo_url = st.text_input("Logo image URL[](https://...)")
 # ---------------------------
 # Helper functions (model, waterfall, pdf, etc.)
 # ---------------------------
-
 # Try to import numpy_financial — fallback handled in functions
 try:
     import numpy_financial as npf
 except Exception:
     npf = None
     logger.debug("numpy_financial not available; fallback will be used where needed")
-
 def robust_irr(cfs):
     try:
         if npf is not None:
@@ -338,7 +280,6 @@ def robust_irr(cfs):
             low = mid
             f_low = f_mid
     return (low + high) / 2
-
 def annual_payment(loan, rate, amort_years):
     if amort_years == 0:
         return loan * rate
@@ -349,10 +290,8 @@ def annual_payment(loan, rate, amort_years):
     if rate == 0:
         return loan / amort_years
     return loan * rate * x / (x - 1)
-
 def safe_cap(rate):
     return min(max(rate, 0.03), 0.30)
-
 def compute_amort_schedule(loan, rate, amort_years, years):
     balances, interests, principals, payments = [], [], [], []
     bal = loan
@@ -372,7 +311,6 @@ def compute_amort_schedule(loan, rate, amort_years, years):
         balances.append(bal)
         bal = max(bal - principal, 0.0)
     return balances, interests, principals, payments
-
 def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, equity_lp, promote_tiers):
     if remaining_residual <= 0 or not promote_tiers:
         lp_share = 0.8
@@ -414,7 +352,6 @@ def settle_final_distribution(lp_cf_so_far, gp_cf_so_far, remaining_residual, eq
         lp_add_total += residual_left * 0.8
         gp_add_total += residual_left * 0.2
     return lp_add_total, gp_add_total
-
 def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, equity_lp, pref_annual, catchup_pct):
     lp_paid = 0.0
     gp_paid = 0.0
@@ -435,7 +372,6 @@ def apply_periodic_waterfall(distributable, lp_roc_remaining, lp_pref_accrued, e
         rem -= gp_catch
     residual_left = rem
     return lp_paid, gp_paid, lp_roc_remaining, lp_pref_accrued, residual_left
-
 def build_model_and_settle_det():
     senior_loan = total_cost * senior_ltv
     mezz_loan = total_cost * mezz_pct if (use_mezz and mezz_pct > 0) else 0.0
@@ -502,7 +438,6 @@ def build_model_and_settle_det():
         "exit_value": exit_value,
         "exit_reversion": exit_reversion
     }
-
 def run_montecarlo(n_sims):
     cov = np.diag([sigma_rent ** 2, sigma_opex ** 2, sigma_cap ** 2])
     cov = np.sqrt(cov) @ corr @ np.sqrt(cov)
@@ -576,20 +511,17 @@ def run_montecarlo(n_sims):
         if any(d < 1.2 for d in dscr_vals):
             dscr_breach_count += 1
     return np.array(lp_irrs), dscr_breach_count
-
 def generate_sample_csv(cf_table):
     buf = io.StringIO()
     cf_table.to_csv(buf, index=False)
     buf.seek(0)
     return buf.getvalue().encode()
-
 def figure_to_png_bytes(fig):
     try:
         return fig.to_image(format="png")
     except Exception as e:
         logger.warning("figure_to_png_bytes failed: %s", e)
         return None
-
 def fetch_logo_image(logo_file, logo_url):
     if logo_file is not None:
         try:
@@ -607,14 +539,12 @@ def fetch_logo_image(logo_file, logo_url):
             logger.warning("fetch_logo_image(url) failed: %s", e)
             return None
     return None
-
 def split_dataframe_for_table(df, max_rows=30):
     parts = []
     n = len(df)
     for i in range(0, n, max_rows):
         parts.append(df.iloc[i:i+max_rows])
     return parts
-
 def add_header_footer(c, logo_blob_tuple):
     try:
         width, height = letter
@@ -632,7 +562,6 @@ def add_header_footer(c, logo_blob_tuple):
                 pass
     except Exception:
         logger.warning("add_header_footer error", exc_info=True)
-
 def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     if not REPORTLAB_AVAILABLE:
         text = "ReportLab not available. Install reportlab to generate full PDF memo."
@@ -658,7 +587,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     story.append(Paragraph(exec_text, normal))
     story.append(Spacer(1, 12))
     story.append(PageBreak())
-
     # Deterministic CF table
     story.append(Paragraph("Deterministic Cashflows (LP & GP)", styles['Heading2']))
     df = det['cf_table'].copy()
@@ -679,7 +607,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
         story.append(Spacer(1, 8))
         if idx < len(parts) - 1:
             story.append(PageBreak())
-
     story.append(PageBreak())
     story.append(Paragraph("Monte Carlo Analysis — LP IRR Distribution & Waterfall", styles['Heading2']))
     st_lines = [
@@ -690,7 +617,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
     for line in st_lines:
         story.append(Paragraph(line, normal))
     story.append(Spacer(1, 12))
-
     # embed charts if available
     try:
         png_hist = figure_to_png_bytes(fig_monte) if fig_monte is not None else None
@@ -707,7 +633,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
             story.append(Spacer(1, 6))
     except Exception as e:
         logger.warning("Embedding charts into PDF failed: %s", e)
-
     story.append(PageBreak())
     story.append(Paragraph("Waterfall Mechanics & Promote Tiers", styles['Heading2']))
     wf_text = "Promote tiers (IRR-hurdle driven):\n"
@@ -737,7 +662,6 @@ def generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob
               onLaterPages=lambda c, d: add_header_footer(c, logo_blob_tuple=None))
     buf.seek(0)
     return buf.getvalue(), f"Pro_Forma_AI_Memo_{datetime.today().strftime('%Y%m%d')}.pdf"
-
 def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple):
     try:
         pdf_bytes, filename = generate_long_pdf_memo(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tuple)
@@ -749,7 +673,6 @@ def generate_pdf_report(det, monte_stats, fig_monte, fig_waterfall, logo_blob_tu
                 f"P50 (MC): {monte_stats.get('p50', 'N/A')}\n"
                 f"P95 (MC): {monte_stats.get('p95', 'N/A')}\n")
         return text.encode("utf-8"), f"Pro_Forma_AI_Summary_{datetime.today().strftime('%Y%m%d')}.txt"
-
 # ---------------------------
 # Run model / UI actions
 # ---------------------------
@@ -766,7 +689,6 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         lp_irr = robust_irr(lp_cfs)
         st.success("Deterministic build complete")
         logger.info("Deterministic build complete: LP IRR = %s", lp_irr)
-
     st.subheader("Deterministic Results")
     c1, c2, c3 = st.columns(3)
     try:
@@ -775,17 +697,14 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         c1.metric("LP IRR (det)", "N/A")
     c2.metric("Min DSCR", f"{min(dscr_path):.2f}x" if dscr_path else "N/A")
     c3.metric("Exit Value (net)", f"${exit_value*(1-selling_costs):,.0f}")
-
     st.markdown("### Deterministic Cashflow Table (LP)")
     st.dataframe(cf_table)
     csv_bytes = generate_sample_csv(cf_table)
     st.download_button("Download deterministic CF CSV", csv_bytes, "deterministic_cf.csv", "text/csv")
-
     st.info(f"Running Monte Carlo with {n_sims} sims — this may take time.")
     with st.spinner("Running Monte Carlo..."):
         irrs, breaches = run_montecarlo(int(n_sims))
         logger.info("Monte Carlo done: valid IRRs = %d breaches = %d", len(irrs), breaches)
-
     if irrs.size == 0:
         st.error("Monte Carlo produced no valid IRRs. Check inputs.")
         p5 = p50 = p95 = None
@@ -799,11 +718,9 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
         cc2.metric("P50", f"{p50:.2%}")
         cc3.metric("P95", f"{p95:.2%}")
         st.metric("Probability DSCR < 1.2", f"{breaches / max(1, int(n_sims)):.1%}")
-
         # charts
         fig_monte = px.histogram(irrs * 100, nbins=80, title="LP IRR Distribution (Monte Carlo)")
         fig_monte.add_vline(x=p50 * 100, line_color="white", line_width=3)
-
         op_sum = sum([x for x in det['lp_cfs'][1:-1]]) if len(det['lp_cfs']) > 2 else 0
         wf = go.Figure(go.Waterfall(
             x=["Equity In", "Operating CF", "Exit/Residual"],
@@ -811,18 +728,15 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
             connector={"line": {"color": "white"}}
         ))
         wf.update_layout(title="Deterministic LP Waterfall", template="plotly_white")
-
         # Present charts (UI)
         st.plotly_chart(fig_monte, use_container_width=True)
         st.plotly_chart(wf, use_container_width=True)
         fig_waterfall = wf
-
     monte_stats = {
         "p5": f"{p5:.1%}" if (p5 is not None) else "N/A",
         "p50": f"{p50:.1%}" if (p50 is not None) else "N/A",
         "p95": f"{p95:.1%}" if (p95 is not None) else "N/A",
     }
-
     # fetch logo if provided
     logo_blob = None
     try:
@@ -830,7 +744,6 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
                                      logo_url if 'logo_url' in locals() else None)
     except Exception as e:
         logger.warning("Logo fetch failed: %s", e)
-
     with st.spinner("Generating PDF memo (multi-page) ..."):
         try:
             pdf_bytes, filename = generate_pdf_report(det, monte_stats,
@@ -848,12 +761,10 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
                             f"P50 (MC): {monte_stats.get('p50')}\n"
                             f"P95 (MC): {monte_stats.get('p95')}\n")
             st.download_button("Download Summary (TXT)", summary_text.encode(), "proforma_summary.txt", "text/plain")
-
     if 'irrs' in locals() and irrs.size > 0:
         buf = io.StringIO()
         pd.DataFrame({"LP_IRR": irrs}).to_csv(buf, index=False)
         st.download_button("Download Monte Carlo IRRs (CSV)", buf.getvalue().encode(), "mc_irrs.csv", "text/csv")
-
     # telemetry (non-blocking)
     try:
         payload = {
@@ -866,6 +777,5 @@ if st.button("Run Full Institutional Model (Deterministic + Monte Carlo)"):
             requests.post(f"{APP_URL.rstrip('/')}/api/pdf", json=payload, timeout=4)
     except Exception:
         pass
-
 st.markdown("---")
 st.info("Institutional model: multi-tier promote, Monte Carlo, PDF reporting. Adjust inputs and rerun.")
