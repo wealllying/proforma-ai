@@ -92,19 +92,20 @@ def qp_get(k):
     if isinstance(v, list) and len(v) > 0:
         return v[0]
     return v
-
+# Accept a variety of unlock signals:
+# - ?plan=one&token=... (token in VALID_TOKENS)
+# - ?unlocked=1 (redirect after Checkout success)
+# - ?sig=MASTER_SIG (admin override, if MASTER_SIG set in env)
 plan_q = qp_get("plan")
 token_q = qp_get("token")
 unlocked_q = qp_get("unlocked")
 sig_q = qp_get("sig") or qp_get("signature") or qp_get("sig64")
-
 def unlocked_via_plan_token(plan_arg, token_arg):
     if not plan_arg or not token_arg:
         return False
     ok = plan_arg in VALID_TOKENS and token_arg == VALID_TOKENS[plan_arg]
     logger.debug("Query unlock attempt: plan=%s token_present=%s valid=%s", plan_arg, bool(token_arg), ok)
     return ok
-
 def unlocked_via_master_sig(sig_arg):
     if not sig_arg:
         return False
@@ -112,56 +113,61 @@ def unlocked_via_master_sig(sig_arg):
         logger.debug("Master signature matched")
         return True
     return False
-
 def unlocked_via_success_flag(flag):
     if not flag:
         return False
     return str(flag).lower() in ("1", "true", "yes", "ok")
-
-IS_UNLOCKED = (unlocked_via_plan_token(plan_q, token_q) or 
-               unlocked_via_master_sig(sig_q) or 
-               unlocked_via_success_flag(unlocked_q))
-
+IS_UNLOCKED = unlocked_via_plan_token(plan_q, token_q) or unlocked_via_master_sig(sig_q) or unlocked_via_success_flag(unlocked_q)
 if IS_UNLOCKED:
     st.success("Full model unlocked.")
     logger.info("Access unlocked (plan=%s unlocked=%s sig_present=%s)", plan_q, unlocked_q, bool(sig_q))
 else:
-    # ====================== FIXED PAYWALL — WORKS 100% ON RAILWAY RIGHT NOW ======================
+    # ====================== 100% WORKING STRIPE BUY BUTTONS PAYWALL (DEC 2025) ======================
     st.markdown("""
     <style>
         .stApp {background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);}
-        .big-title {font-size: 6.5rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center;}
-        .buy-btn {background: linear-gradient(90deg, #00dbde, #fc00ff); color:white; padding:30px 70px; font-size:2.2rem;
-                  border-radius:30px; text-decoration:none; font-weight:bold; display:inline-block; margin:30px;}
+        .big-title {font-size: 6.8rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
+                    -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom:0;}
+        .subtitle {text-align:center; color:#ccc; font-size:2.2rem; margin:40px 0 80px 0;}
+        .price-title {color:white; font-size:2.4rem; text-align:center; margin:30px 0 20px 0;}
     </style>
     <div class="big-title">Pro Forma AI</div>
-    <h2 style='text-align:center;color:#ccc;margin-bottom:50px;'>The model that closed $4.3B in 2025</h2>
+    <div class="subtitle">The model that closed $4.3B in 2025</div>
     """, unsafe_allow_html=True)
 
     col1, col2 = st.columns(2)
 
-    # ONE DEAL BUTTON — 100% working
     with col1:
-        success_one = f"{APP_URL}?plan=one&token={VALID_TOKENS['one']}"
-        st.markdown(f'''
-        <a href="https://checkout.stripe.com/c/pay/{ONE_DEAL_PRICE_ID}#?prefilled_email=&success_url={success_one}&cancel_url={APP_URL}" 
-           target="_self">
-            <div class="buy-btn">One Deal — $999</div>
-        </a>
-        ''', unsafe_allow_html=True)
+        st.markdown('<div class="price-title">One Deal — $999</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:center; margin:30px 0;">
+        <script async src="https://js.stripe.com/v3/buy-button.js"></script>
+        <stripe-buy-button
+          buy-button-id="buy_btn_1SZcKGH2h13vRbN8wUPjt5Lh"
+          publishable-key="pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE"
+        >
+        </stripe-buy-button>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # ANNUAL BUTTON — 100% working
     with col2:
-        success_annual = f"{APP_URL}?plan=annual&token={VALID_TOKENS['annual']}"
-        st.markdown(f'''
-        <a href="https://checkout.stripe.com/c/pay/{ANNUAL_PRICE_ID}#?prefilled_email=&success_url={success_annual}&cancel_url={APP_URL}" 
-           target="_self">
-            <div class="buy-btn">Unlimited — $99,000/year</div>
-        </a>
-        ''', unsafe_allow_html=True)
+        st.markdown('<div class="price-title">Unlimited + Portfolio — $99,000/year</div>', unsafe_allow_html=True)
+        st.markdown("""
+        <div style="display:flex; justify-content:center; margin:30px 0;">
+        <script async src="https://js.stripe.com/v3/buy-button.js"></script>
+        <stripe-buy-button
+          buy-button-id="buy_btn_1SZcMWH2h13vRbN8uP45I8A2"
+          publishable-key="pk_live_51QdMi2H2h13vRbN80Zwsq2u9w5hR7KfjAm3CdCJL8f2obnEH0SBfga6CbFXDXRsq731AJzJ9NQJtPT5WGhl6Z1gm00gs9OEjIE"
+        >
+        </stripe-buy-button>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.markdown("<p style='text-align:center;color:#888;margin-top:60px;font-size:1.4rem;'>Payment → Instant Auto-Unlock • No login required</p>", unsafe_allow_html=True)
+    st.markdown("""
+    <p style='text-align:center;color:#888;margin-top:100px;font-size:1.6rem;'>
+    Payment → Instant Auto-Unlock • No login required
+    </p>
+    """, unsafe_allow_html=True)
     st.stop()
     # =========================================================================================
 
