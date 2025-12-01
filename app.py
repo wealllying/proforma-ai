@@ -31,7 +31,6 @@ except Exception:
     REPORTLAB_AVAILABLE = False
 
 try:
-try:
     import kaleido
 except Exception:
     pass
