@@ -38,62 +38,79 @@ import hashlib
 import json
 import secrets
 
-# ==================== KILL OLD GLOW THEME + FORCE SCHWAB/BLACKSTONE DARK PRO LOOK ====================
-st.set_page_config(page_title="Pro Forma AI — Institutional", layout="wide")
-
 st.markdown("""
 <style>
-    /* HARD KILL ALL OLD STYLES */
-    .stApp {background: #0A0A0A !important;}
-    [data-testid="stAppViewContainer"] {background: #0A0A0A !important;}
-    .css-18e3th9, .css-1d391kg, section.main {background: #0A0A0A !important;}
-    
-    /* Sidebar */
-    section[data-testid="stSidebar"] {background:#111111 !important; border-right:1px solid #2A2A2A !important;}
-    
-    /* Remove Streamlit branding completely */
-    #MainMenu {visibility: hidden !important;}
-    footer {visibility: hidden !important;}
-    header {visibility: hidden !important;}
-    .css-14xtw13 footer {visibility: hidden !important;}
-    
-    /* Text */
-    body, h1, h2, h3, h4, h5, p, div, span {color:#F5F5F5 !important; font-family:'Inter',sans-serif !important;}
-    
-    .stMarkdown {color:#F5F5F5 !important;}
-    
-    /* Buttons — premium teal */
-    .stButton>button {
-        background:#00BFBF !important; color:white !important; border:none !important;
-        border-radius:12px !important; font-weight:600 !important; height:52px !important;
+
+    /* ---- BASE APP BACKGROUND ---- */
+    .stApp, [data-testid="stAppViewContainer"] {
+        background: #0B0C0F !important;
     }
-    .stButton>button:hover {background:#008E8E !important;}
-    
-    /* Inputs */
-    div[data-baseweb="input"] input, div[data-baseweb="select"] > div {
-        background:#111111 !important; color:#F5F5F5 !important; border:1px solid #2A2A2A !important;
+
+    /* ---- SIDEBAR ---- */
+    [data-testid="stSidebar"] {
+        background: #111217 !important;
+        border-right: 1px solid #1c1d22 !important;
     }
-    
-    /* Sliders */
-    .stSlider [data-baseweb="slider"] > div > div {background:#00BFBF !important;}
-    
-    /* Tables */
-    .dataframe {background:#111111 !important; color:#F5F5F5 !important;}
-    thead tr th {background:#111111 !important; color:#A0A0A0 !important;}
-    
-    /* Kill any leftover gradients or glows */
-    * {background-image:none !important;}
+
+    /* ---- HEADINGS ---- */
+    h1, h2, h3, h4, h5, h6 {
+        color: #F2F4F8 !important;
+        font-weight: 600 !important;
+    }
+
+    /* ---- TEXT ---- */
+    p, span, label, div {
+        color: #D7D9DF !important;
+    }
+
+    /* ---- BUTTONS (REAL Streamlit buttons only) ---- */
+    .stButton > button {
+        background: linear-gradient(90deg,#00C6C6,#009E9E) !important;
+        color: white !important;
+        border-radius: 10px !important;
+        border: none !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 600 !important;
+        transition: 0.1s ease-in-out !important;
+    }
+
+    .stButton > button:hover {
+        opacity: 0.95 !important;
+        transform: none !important;
+    }
+
+    /* ---- FIX BLACK BLOCKS (remove forced background resets) ---- */
+    /* Remove ANY rules like * { background-image:none } — deadly */
+    /* Remove ANY rules overriding all buttons or all divs */
+
+    /* ---- INPUT FIELDS ---- */
+    div[data-baseweb="input"] input {
+        background: #14161C !important;
+        border: 1px solid #262830 !important;
+        color: #F1F3F6 !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        background: #14161C !important;
+        border: 1px solid #262830 !important;
+        color: #F1F3F6 !important;
+    }
+
+    /* ---- DATAFRAME ---- */
+    .stDataFrame thead th {
+        background: #14161C !important;
+        color: #E9EAEC !important;
+    }
+
+    /* ---- CARDS / CONTAINERS ---- */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
-# Optional: also add the official Streamlit dark theme config
-if "theme" not in st.session_state:
-    st.session_state.theme = {
-        "primaryColor": "#00BFBF",
-        "backgroundColor": "#0A0A0A",
-        "secondaryBackgroundColor": "#111111",
-        "textColor": "#F5F5F5",
-        "font": "sans serif"
     }
 # -------------------- PDF LIBS --------------------
 try:
