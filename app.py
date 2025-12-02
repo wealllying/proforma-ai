@@ -18,6 +18,23 @@ import hashlib
 import json
 import secrets
 
+st.markdown("""
+<style>
+    .stApp {background: #0A0A0A; color: #F5F5F5;}
+    .css-1d391kg {background: #111111;} /* sidebar */
+    section[data-testid="stSidebar"] {background: #111111; border-right: 1px solid #2A2A2A;}
+    .stButton>button {
+        background: #00BFBF; color: white; border: none; border-radius: 8px;
+        font-weight: 600; transition: all 0.2s;
+    }
+    .stButton>button:hover {background: #008E8E;}
+    hr {border-color: #2A2A2A;}
+    .stTextInput>div>div>input, .stNumberInput>div>div>input, .stSelectbox>div>div>select {
+        background: #111111; color: #F5F5F5; border: 1px solid #2A2A2A;
+    }
+    h1, h2, h3, h4 {color: #F5F5F5; font-family: 'Inter', sans-serif; font-weight: 700;}
+</style>
+""", unsafe_allow_html=True)
 # -------------------- PDF LIBS --------------------
 try:
     from reportlab.pdfgen import canvas
