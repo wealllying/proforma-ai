@@ -18,96 +18,86 @@ import hashlib
 import json
 import secrets
 
-# app.py — Pro Forma AI — Institutional (Full Version + Full SaaS Login/Registration)
-# FINAL WORKING VERSION — December 1, 2025 — 100% complete with PDF, Monte Carlo, and user accounts
+st.set_page_config(page_title="Pro Forma AI", layout="wide")
 
-import os
-import logging
-import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import requests
-import math
-from datetime import datetime
-import io
-from io import BytesIO
-import textwrap
-import hashlib
-import json
-import secrets
-
-st.markdown(
-    """
+st.markdown("""
 <style>
 
-    /* ---- BASE APP BACKGROUND ---- */
-    .stApp, [data-testid="stAppViewContainer"] {
-        background: #0B0C0F !important;
+    /* GLOBAL RESET */
+    * { 
+        font-family: 'Inter', sans-serif !important;
+        background-image: none !important;
     }
 
-    /* ---- SIDEBAR ---- */
+    /* APP BACKGROUND */
+    .stApp {
+        background: linear-gradient(135deg, #0f0c29, #302b63, #24243e) !important;
+    }
+
+    /* MAIN CONTENT CONTAINER */
+    [data-testid="stAppViewContainer"] {
+        background: transparent !important;
+    }
+
+    /* SIDEBAR */
     [data-testid="stSidebar"] {
-        background: #111217 !important;
-        border-right: 1px solid #1c1d22 !important;
+        background: rgba(20, 20, 35, 0.75) !important;
+        backdrop-filter: blur(14px) !important;
+        border-right: 1px solid rgba(255,255,255,0.08) !important;
     }
 
-    /* ---- HEADINGS ---- */
-    h1, h2, h3, h4, h5, h6 {
-        color: #F2F4F8 !important;
-        font-weight: 600 !important;
+    /* HEADERS / TEXT */
+    body, p, div, span, h1, h2, h3, h4, h5 {
+        color: #F3F6FD !important;
     }
 
-    /* ---- TEXT ---- */
-    p, span, label, div {
-        color: #D7D9DF !important;
-    }
-
-    /* ---- BUTTONS ---- */
-    .stButton > button {
-        background: linear-gradient(90deg,#00C6C6,#009E9E) !important;
+    /* BUTTONS */
+    .stButton>button {
+        background: linear-gradient(90deg, #8D4CFF, #B36BFF) !important;
         color: white !important;
-        border-radius: 10px !important;
         border: none !important;
-        padding: 0.6rem 1.2rem !important;
+        padding: 0.75rem 1.6rem !important;
+        border-radius: 12px !important;
         font-weight: 600 !important;
-        transition: 0.1s ease-in-out !important;
+        font-size: 1.1rem !important;
+        box-shadow: 0 6px 20px rgba(0,0,0,0.35) !important;
+        transition: 0.2s ease-in-out;
+    }
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 28px rgba(0,0,0,0.55) !important;
+        background: linear-gradient(90deg, #9d5cff, #c27aff) !important;
     }
 
-    .stButton > button:hover {
-        opacity: 0.95 !important;
-    }
-
-    /* ---- INPUTS ---- */
-    div[data-baseweb="input"] input {
-        background: #14161C !important;
-        border: 1px solid #262830 !important;
-        color: #F1F3F6 !important;
-    }
-
+    /* INPUT FIELDS */
+    div[data-baseweb="input"] input, 
     div[data-baseweb="select"] > div {
-        background: #14161C !important;
-        border: 1px solid #262830 !important;
-        color: #F1F3F6 !important;
+        background: rgba(255,255,255,0.06) !important;
+        border-radius: 10px !important;
+        color: #fff !important;
+        border: 1px solid rgba(255,255,255,0.1) !important;
     }
 
-    /* ---- DATAFRAME ---- */
-    .stDataFrame thead th {
-        background: #14161C !important;
-        color: #E9EAEC !important;
+    /* SLIDERS */
+    .stSlider [data-baseweb="slider"] > div > div {
+        background: #B36BFF !important;
     }
 
-    /* ---- MAIN CONTAINER SPACING ---- */
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 3rem !important;
+    /* TABLES */
+    .dataframe, .dataframe tbody tr, .dataframe thead th {
+        background: rgba(255,255,255,0.05) !important;
+        color: white !important;
     }
+
+    /* REMOVE STREAMLIT BRANDING */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 
 </style>
-    """,
-    unsafe_allow_html=True
-)
+""", unsafe_allow_html=True)
+
+
 
 # -------------------- PDF LIBS --------------------
 try:
