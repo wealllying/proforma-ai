@@ -145,31 +145,47 @@ if not st.session_state.logged_in:
             st.markdown("**Step 1:** Pay instantly below → get access forever  \n**Step 2 (optional):** create a username/password")
 
     # === MAIN PAYWALL — ALWAYS VISIBLE UNTIL PAID ===
-    st.markdown("""
+st.markdown("""
     <style>
-        .stApp {background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);}
-        .big-title {font-size: 7.2rem !important; font-weight: 900; background: linear-gradient(90deg, #00dbde, #fc00ff);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom:0;}
-        .subtitle {text-align:center; color:#ccc; font-size:2.4rem; margin:40px 0 80px 0;}
-        .price-title {color:white; font-size:2.7rem; text-align:center; margin:30px 0 20px 0;}
+        .stApp {
+            background: #f7f7f9;
+        }
+        .big-title {
+            font-size: 4rem !important;
+            font-weight: 800;
+            color: #1a1a1a;
+            text-align: center;
+            margin-bottom: 0;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            font-size: 1.4rem;
+            margin: 20px 0 40px 0;
+        }
+        .price-title {
+            color: #111;
+            font-size: 1.8rem;
+            text-align: center;
+            margin: 20px 0;
+        }
         .buy-btn {
-            background: linear-gradient(90deg, #00dbde, #fc00ff);
+            background: #1a73e8;
             color: white !important;
-            padding: 35px 80px;
-            font-size: 2.5rem;
-            font-weight: bold;
-            border-radius: 50px;
+            padding: 20px 40px;
+            font-size: 1.4rem;
+            font-weight: 600;
+            border-radius: 12px;
             text-decoration: none;
             display: block;
             width: 90%;
-            margin: 50px auto;
+            margin: 30px auto;
             text-align: center;
-            box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
     </style>
-    <div class="big-title">Pro Forma AI</div>
-    <div class="subtitle">The model that closed $4.3B in 2025</div>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
+
 
     col1, col2 = st.columns(2)
     base_url = os.getenv("RAILWAY_STATIC_URL", os.getenv("RENDER_EXTERNAL_URL", "https://your-app.up.railway.app"))
