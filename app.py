@@ -186,11 +186,16 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+col1, col2 = st.columns(2)
 
-    col1, col2 = st.columns(2)
-    base_url = os.getenv("RAILWAY_STATIC_URL", os.getenv("RENDER_EXTERNAL_URL", "https://your-app.up.railway.app"))
-    if not base_url.startswith("http"):
-        base_url = "https://" + base_url
+base_url = os.getenv(
+    "RAILWAY_STATIC_URL",
+    os.getenv("RENDER_EXTERNAL_URL", "https://your-app.up.railway.app")
+)
+
+if not base_url.startswith("http"):
+    base_url = "https://" + base_url
+
 
     with col1:
         st.markdown('<div class="price-title">One Deal — $999</div>', unsafe_allow_html=True)
