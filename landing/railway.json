@@ -4,7 +4,6 @@
         "builder": "NIXPACKS"
     },
     "deploy": {
-        "startCommand": "npx serve .",
-        "restartPolicyType": "ON_FAILURE"
+        "startCommand": "npx serve ."
     }
 }
